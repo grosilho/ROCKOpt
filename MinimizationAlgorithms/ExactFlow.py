@@ -6,7 +6,7 @@ from .MinimizationAlgorithm import MinimizationAlgorithm
 
 class ExactFlow(MinimizationAlgorithm):
     def __init__(self, max_iter, tol, n, delta_max):
-        description = self.__class__.__name__
+        description = "Exact" + ("GF" if "Gradient" in self.__class__.__name__ else "NF")
         super().__init__(max_iter, tol, n, description)
         self.delta_max = delta_max
 

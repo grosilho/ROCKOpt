@@ -25,7 +25,7 @@ min_algs = [
     "StabilizedTrustRegion",
     # "StabilizedGradientFlow",
     # "StabilizedNewtonFlow",
-    "SplitStabilizedNewtonFlow",
+    # "SplitStabilizedNewtonFlow",
     # "ExactGradientFlow",
     # "ExactNewtonFlow",
 ]
@@ -42,10 +42,10 @@ specific_options["TrustRegion"] = {
     "iter_solver_maxiter": 100,
 }
 specific_options["StabilizedTrustRegion"] = {
-    "delta_max": 0.5,
+    "delta_max": 1.0,
     "eta": 1e-4,
     "method": "RKC1",
-    "damping": 5.0,
+    "damping": 0.05,
     "safe_add": 1,
     "dt": 1.0,
     "max_steps": 20,

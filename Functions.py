@@ -40,12 +40,14 @@ class Problem:
         # (df(x), ddf(x) * v)
         df, ddfv = jvp(grad(self.f), (x,), (v,))
         return df, ddfv
+    
+    def dfv(self, x, v):
+        # Compute the directional derivative dot(grad(f),v), at x. Much cheaper than computing the full gradient and then the dot product.
+        return self.f_dfv(x, v)[1]
 
     def ddfv(self, x, v):
+        # Compute the Hessian-vector product at x. It is much cheper than computing the full Hessian matrix and then multiply.
         return self.df_ddfv(x, v)[1]
-
-    def dfv(self, x, v):
-        return self.f_dfv(x, v)[1]
 
 
 class Rosenbrock(Problem):
@@ -114,18 +116,19 @@ class MinimalSurface(Problem):
         # mesh size
         self.h = 1.0 / (self.sqrt_n + 1)
 
-    def g(self, x, y):
-        # the boundary condition
-        # return y * (1.0 - y) + 0 * x
-        freq = 1
-        return jnp.cos(freq * 2.0 * jnp.pi * x) * jnp.cos(freq * 2.0 * jnp.pi * y)
-
     def grid(self, with_boundary):
         # return the frid, with or without the boundary nodes
         if with_boundary:
             return self.x[None, :], self.y[:, None]
         else:
             return self.x[None, 1:-1], self.y[1:-1, None]
+
+    @partial(jit, static_argnums=(0,))
+    def g(self, x, y):
+        # the boundary condition
+        # return y * (1.0 - y) + 0 * x
+        freq = 1
+        return jnp.cos(freq * 2.0 * jnp.pi * x) * jnp.cos(freq * 2.0 * jnp.pi * y)
 
     def initial_guess(self):
         return self.g(*self.grid(False)).flatten()
@@ -139,6 +142,7 @@ class MinimalSurface(Problem):
         up = up.at[:, -1].set(self.g(1.0, self.y))
         return up
 
+    @partial(jit, static_argnums=(0,))
     def add_g(self, u):
         up = jnp.zeros((self.sqrt_n + 2, self.sqrt_n + 2))
         up = up.at[1:-1, 1:-1].set(u)
