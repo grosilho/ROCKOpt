@@ -10,7 +10,8 @@ class SplitStabilizedNewtonFlow(MinimizationAlgorithm):
     def __init__(
         self,
         max_iter,
-        tol,
+        atol,
+        rtol,
         n,
         delta_max=0.1,
         rho_freq=5,
@@ -20,7 +21,7 @@ class SplitStabilizedNewtonFlow(MinimizationAlgorithm):
         eps=1e-1,
     ):
         description = "SplitStabNF|" + method
-        super().__init__(max_iter, tol, n, description)
+        super().__init__(max_iter, atol, rtol, n, description)
         self.rho_freq = rho_freq
         self.method = method
         self.delta_max = delta_max
@@ -42,7 +43,7 @@ class SplitStabilizedNewtonFlow(MinimizationAlgorithm):
         rho_old = 0.0
         s_old = 0
 
-        self.append_to_history(x, delta, True)
+        self.append_to_history(x, F.f(x), delta, True)
 
         et = time.process_time()
 
@@ -74,7 +75,9 @@ class SplitStabilizedNewtonFlow(MinimizationAlgorithm):
                     self.es.update_coefficients(s)
 
             self.stats["iter"] += 1
-            self.logger.info(f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}")
+            self.logger.info(
+                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}"
+            )
 
             djm2, djm1 = 0.0, 0.0
             dj = self.es.mu[0] * delta * fp
@@ -85,9 +88,9 @@ class SplitStabilizedNewtonFlow(MinimizationAlgorithm):
             p += dj
             x += delta * p
 
-            self.append_to_history(x, delta, True)
+            self.append_to_history(x, F.f(x), delta, True)
 
-            if np.linalg.norm(p)/np.sqrt(self.n) < self.tol:
+            if self.check_convergence():
                 self.logger.debug("Convergence reached")
                 break
 

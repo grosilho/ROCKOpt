@@ -6,10 +6,22 @@ from .MinimizationAlgorithm import MinimizationAlgorithm
 
 
 class TrustRegion(MinimizationAlgorithm):
-    def __init__(self, max_iter, tol, n, delta_max, eta=1e-4, loc_prob_sol="dog_leg", method="direct", iter_solver_tol=1e-5, iter_solver_maxiter=100):
+    def __init__(
+        self,
+        max_iter,
+        atol,
+        rtol,
+        n,
+        delta_max,
+        eta=1e-4,
+        loc_prob_sol="dog_leg",
+        method="direct",
+        iter_solver_tol=1e-5,
+        iter_solver_maxiter=100,
+    ):
 
         description = "TR|" + ("DL" if loc_prob_sol == "dog_leg" else "CP") + "|" + method.capitalize()
-        super().__init__(max_iter, tol, n, description=description)
+        super().__init__(max_iter, atol, rtol, n, description=description)
 
         self.delta_max = delta_max
         self.eta = eta
@@ -17,6 +29,8 @@ class TrustRegion(MinimizationAlgorithm):
         self.method = method
         self.iter_solver_tol = iter_solver_tol
         self.iter_solver_maxiter = iter_solver_maxiter
+
+        self.pB0 = np.zeros(n)
 
         self.logger = logging.getLogger("TrustRegion")
 
@@ -32,7 +46,8 @@ class TrustRegion(MinimizationAlgorithm):
         gp: g^T p
         pBp: p^T B p
         """
-        pB, g, B = self.newton_direction(p, F, x)
+        pB, g, B = self.newton_direction(self.pB0, F, x)
+        self.pB0 = pB
 
         if np.linalg.norm(pB) <= delta:
             p = pB
@@ -46,32 +61,37 @@ class TrustRegion(MinimizationAlgorithm):
                 c = np.linalg.norm(pU) ** 2 - delta**2
                 tau = (-b + np.sqrt(b**2 - 4 * a * c)) / (2 * a)
                 p = pU + tau * (pB - pU)
+
         return p, np.dot(g, p), np.dot(p, B(p))
 
     def newton_direction(self, p, F, x):
         """
-        Compute the Newton direction with a direct or iterative solver.    
+        Compute the Newton direction with a direct or iterative solver.
         """
         g = F.df(x)
         self.stats["df_evals"] += 1
 
         if self.method == "direct":
             B = F.ddf(x)
+            self.stats["ddf_evals"] += 1
 
             def Bv(v):
                 self.stats["ddf_mults"] += 1
                 return B @ v
 
-            self.stats["ddf_evals"] += 1
             pB = np.linalg.solve(B, -g)
+            self.stats["ddf_solves"] += 1
 
         elif self.method == "iterative":
             # solve iteratively in matrix free fashion
             def Bv(v):
                 self.stats["ddf_mults"] += 1
                 return F.ddfv(x, v)
+
             Bv_op = scipy.sparse.linalg.LinearOperator((p.size, p.size), matvec=Bv)
-            pB, exit_code = scipy.sparse.linalg.cg(Bv_op, -g, x0=p, rtol=self.iter_solver_tol, maxiter=self.iter_solver_maxiter, M=None)
+            pB, exit_code = scipy.sparse.linalg.cg(
+                Bv_op, -g, x0=p, rtol=self.iter_solver_tol, maxiter=self.iter_solver_maxiter, M=None
+            )
             self.stats["ddf_solves"] += 1
         else:
             raise ValueError("Invalid linear solver")
@@ -110,7 +130,7 @@ class TrustRegion(MinimizationAlgorithm):
         if delta == 0.0:
             delta = self.delta_max
 
-        p = np.zeros_like(x)
+        p = -F.df(x)  # np.zeros_like(x)
 
         et = time.process_time()
 
@@ -131,7 +151,7 @@ class TrustRegion(MinimizationAlgorithm):
             rho = (fx - fxp) / (-gp - 0.5 * pBp)
 
             if record_rejected or rho > self.eta:
-                self.append_to_history(x, delta, rho > self.eta)
+                self.append_to_history(x, fx, delta, rho > self.eta)
 
             self.stats["iter"] += 1
 
@@ -148,7 +168,7 @@ class TrustRegion(MinimizationAlgorithm):
             elif rho < 0.25:
                 delta = 0.5 * np.linalg.norm(p)
 
-            if np.linalg.norm(p)/np.sqrt(self.n) < self.tol:
+            if rho > self.eta and self.check_convergence():
                 logging.debug("Convergence reached")
                 break
 
@@ -162,6 +182,6 @@ class TrustRegion(MinimizationAlgorithm):
 
         self.stats["min_f"] = fx
 
-        self.append_to_history(x, 0., True)
+        self.append_to_history(x, fx, delta, True)
 
         return self.history, self.stats

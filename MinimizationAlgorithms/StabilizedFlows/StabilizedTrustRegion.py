@@ -10,7 +10,8 @@ class StabilizedTrustRegion(TrustRegion):
     def __init__(
         self,
         max_iter,
-        tol,
+        atol,
+        rtol,
         n,
         delta_max,
         eta=1e-4,
@@ -23,7 +24,7 @@ class StabilizedTrustRegion(TrustRegion):
         rho_freq=1,
     ):
 
-        super().__init__(max_iter, tol, n, delta_max, eta, loc_prob_sol="dog_leg")
+        super().__init__(max_iter, atol, rtol, n, delta_max, eta, loc_prob_sol="dog_leg")
         self.description = "StabTR|" + method
 
         self.es_params = {
@@ -60,6 +61,8 @@ class StabilizedTrustRegion(TrustRegion):
             self.stats["ddf_mults"] += 1
             return -g - F.ddfv(x, y)
 
+        res0 = np.linalg.norm(f(p))
+
         dt = self.es_params["dt"]
         max_steps = self.es_params["max_steps"]
         p_conv_tol = self.es_params["p_conv_tol"]
@@ -71,6 +74,7 @@ class StabilizedTrustRegion(TrustRegion):
 
             fp = f(p)
 
+            # Note that this if can be executed only at first iteration (i=0)
             if self.rho_count % self.es_params["rho_freq"] == 0 and i == 0:
                 eigval, n_f_eval = self.eigval_estimator.rho(f, p, fp)
             if eigval != self.eigval:
@@ -91,7 +95,7 @@ class StabilizedTrustRegion(TrustRegion):
 
             i += 1
 
-            if np.linalg.norm(res) < p_conv_tol:
+            if np.linalg.norm(res) / res0 < p_conv_tol:
                 break
 
             if i >= max_steps:
@@ -99,6 +103,8 @@ class StabilizedTrustRegion(TrustRegion):
                 break
 
         self.rho_count += 1
+
+        self.logger.info(f"Stabilized Newton direction with s={s} and rho={eigval:.2f}, converged in {i} iterations.")
 
         def Bv(v):
             self.stats["ddf_mults"] += 1

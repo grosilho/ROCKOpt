@@ -7,10 +7,22 @@ from ..MinimizationAlgorithm import MinimizationAlgorithm
 
 
 class StabilizedGradientFlow(MinimizationAlgorithm):
-    def __init__(self, max_iter, tol, n, delta_max=0.1, rho_freq=5, method="RKC1", damping=0.05, safe_add=0,record_stages=False):
+    def __init__(
+        self,
+        max_iter,
+        atol,
+        rtol,
+        n,
+        delta_max=0.1,
+        rho_freq=5,
+        method="RKC1",
+        damping=0.05,
+        safe_add=0,
+        record_stages=False,
+    ):
 
         description = "StabGF|" + method
-        super().__init__(max_iter, tol, n, description)
+        super().__init__(max_iter, atol, rtol, n, description)
 
         self.record_stages = record_stages
         self.rho_freq = rho_freq
@@ -38,16 +50,19 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
         rho_old = 0.0
         s_old = 0
 
-        self.append_to_history(x, delta, True)
+        self.append_to_history(x, F.f(x), delta, True)
 
         et = time.process_time()
 
         while True:
             fx = f(x)
-        
+
             # re-estimate rho every rho_freq iterations
             if self.stats["iter"] % self.rho_freq == 0:
-                rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
+                if not hasattr(F, "rho"):
+                    rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
+                else:
+                    rho = F.rho(x)
 
             # update coefficients if rho has changed
             if rho != rho_old:
@@ -58,21 +73,23 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
                     self.es.update_coefficients(s)
 
             self.stats["iter"] += 1
-            self.logger.info(f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}")
+            self.logger.info(
+                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}"
+            )
 
             djm2, djm1 = 0.0, 0.0
             dj = self.es.mu[0] * delta * fx
             for j in range(2, s + 1):
                 if self.record_stages:
-                    self.append_to_history(x+dj, delta, True)
+                    self.append_to_history(x + dj, F.f(x + dj), delta, True)
                 djm2, djm1, dj = djm1, dj, djm2
                 dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * delta * f(x + djm1)
 
             x += dj
 
-            self.append_to_history(x, delta, True)
+            self.append_to_history(x, F.f(x), delta, True)
 
-            if np.linalg.norm(dj)/np.sqrt(self.n)/delta < self.tol:
+            if self.check_convergence():
                 self.logger.debug("Convergence reached")
                 break
 

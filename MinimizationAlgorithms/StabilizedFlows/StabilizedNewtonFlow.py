@@ -10,7 +10,8 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
     def __init__(
         self,
         max_iter,
-        tol,
+        atol,
+        rtol,
         n,
         delta_max=0.1,
         rho_freq=5,
@@ -20,9 +21,9 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
         eps=1e-1,
         record_stages=False,
     ):
-        
+
         description = "StabNF|" + method
-        super().__init__(max_iter, tol, n, description)
+        super().__init__(max_iter, atol, rtol, n, description)
         self.rho_freq = rho_freq
         self.method = method
         self.delta_max = delta_max
@@ -33,7 +34,7 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
 
         self.logger = logging.getLogger("StabilizedNewtonFlow")
 
-    def solve(self, F, x, delta=0., **kwargs):
+    def solve(self, F, x, delta=0.0, **kwargs):
         """
         Solves the minimization problem trying to follow the Newton direction.
         To do so we solve the ODE system
@@ -56,7 +57,7 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
         y = np.concatenate((x, -F.df(x)))
         self.stats["df_evals"] += 1
 
-        self.append_to_history(x, delta, True)
+        self.append_to_history(x, F.f(x), delta, True)
 
         et = time.process_time()
 
@@ -75,7 +76,11 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
 
             # re-estimate rho every rho_freq iterations
             if self.stats["iter"] % self.rho_freq == 0:
-                rho, n_f_evals = self.rho_estimator.rho(f, y, fy)
+                # rho, n_f_evals = self.rho_estimator.rho(f, y, fy)
+                if not hasattr(F, "rho"):
+                    rho, n_f_eval = self.rho_estimator.rho(f, y, fy)
+                else:
+                    rho = F.rho(y[:n])
 
             # update coefficients if rho has changed
             if rho != rho_old:
@@ -94,16 +99,16 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
             dj = self.es.mu[0] * delta * fy
             for j in range(2, s + 1):
                 if self.record_stages:
-                    self.append_to_history(y + dj[:n], delta, True)
+                    self.append_to_history(y + dj[:n], F.f(y + dj[:n]), delta, True)
                 djm2, djm1, dj = djm1, dj, djm2
                 dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * delta * f(y + djm1)
 
             y += dj
-            x= y[:n]
+            x = y[:n]
 
-            self.append_to_history(x, delta, True)
+            self.append_to_history(x, F.f(x), delta, True)
 
-            if np.linalg.norm(dj[:n])/np.sqrt(n)/delta < self.tol:
+            if self.check_convergence():
                 self.logger.debug("Convergence reached")
                 break
 

@@ -5,9 +5,9 @@ from .MinimizationAlgorithm import MinimizationAlgorithm
 
 
 class ExactFlow(MinimizationAlgorithm):
-    def __init__(self, max_iter, tol, n, delta_max):
+    def __init__(self, max_iter, atol, rtol, n, delta_max):
         description = "Exact" + ("GF" if "Gradient" in self.__class__.__name__ else "NF")
-        super().__init__(max_iter, tol, n, description)
+        super().__init__(max_iter, atol, rtol, n, description)
         self.delta_max = delta_max
 
     def solve(self, F, x, delta=0.0, **kwargs):
@@ -17,7 +17,7 @@ class ExactFlow(MinimizationAlgorithm):
         if delta == 0.0:
             delta = self.delta_max
 
-        self.append_to_history(x, delta, True)
+        self.append_to_history(x, F.f(x), delta, True)
 
         et = time.process_time()
 
@@ -28,9 +28,9 @@ class ExactFlow(MinimizationAlgorithm):
 
             self.stats["iter"] += 1
 
-            self.append_to_history(x, delta, True)
+            self.append_to_history(x, F.f(x), delta, True)
 
-            if np.linalg.norm(p) / np.sqrt(self.n) < self.tol:
+            if self.check_convergence():
                 self.logger.debug("Convergence reached")
                 break
 
@@ -40,6 +40,9 @@ class ExactFlow(MinimizationAlgorithm):
 
         et = time.process_time() - et
         self.stats["cpu_time"] = et
+        self.stats["cpu_time_per_iter"] = et / self.stats["iter"]
+
+        self.stats["min_f"] = self.history["fx"][-1]
 
         return self.history, self.stats
 
