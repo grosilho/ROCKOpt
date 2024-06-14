@@ -44,14 +44,14 @@ min_algs = [
     # "ExactNewtonFlow",
 ]
 
-common_options = options = {"n": Fun.n, "max_iter": 1e2, "rtol": 1e-5, "atol": 0.0}
+common_options = options = {"n": Fun.n, "max_iter": 1e2, "rtol": 1e-6, "atol": 0.0}
 
 specific_options = dict()
 specific_options["TrustRegion"] = {
-    "delta_max": 0.1,
+    "delta_max": 1.0,
     "eta": 1e-4,
     "loc_prob_sol": "dog_leg",
-    "method": "iterative",
+    "method": "direct",
     "iter_solver_tol": 1e-5,
     "iter_solver_maxiter": 100,
 }
@@ -67,7 +67,7 @@ specific_options["StabilizedTrustRegion"] = {
     "rho_freq": 1,
 }
 specific_options["StabilizedGradientFlow"] = {
-    "delta_max": 1e-3,
+    "delta_max": 1e-4,
     "method": "RKC1",
     "damping": 1.0,
     "safe_add": 2,

@@ -137,6 +137,8 @@ class TrustRegion(MinimizationAlgorithm):
         fx = F.f(x)
         self.stats["f_evals"] += 1
 
+        self.append_to_history(x, fx, 0.0, True)
+
         while True:
             if self.local_problem_sol == "dog_leg":
                 p, gp, pBp = self.dog_leg(F, x, delta, p)
@@ -148,10 +150,9 @@ class TrustRegion(MinimizationAlgorithm):
             fxp = F.f(x + p)
             self.stats["f_evals"] += 1
 
-            rho = (fx - fxp) / (-gp - 0.5 * pBp)
-
-            if record_rejected or rho > self.eta:
-                self.append_to_history(x, fx, delta, rho > self.eta)
+            true_diff = fx - fxp
+            model_diff = -gp - 0.5 * pBp
+            rho = true_diff / model_diff
 
             self.stats["iter"] += 1
 
@@ -162,13 +163,16 @@ class TrustRegion(MinimizationAlgorithm):
             if rho > self.eta:
                 x += p
                 fx = fxp
+                self.append_to_history(x, fx, delta, True)
+            elif record_rejected:
+                self.append_to_history(x + p, fxp, delta, False)
 
             if rho > 0.75 and np.isclose(np.linalg.norm(p), delta):
                 delta = np.min([2 * delta, self.delta_max])
             elif rho < 0.25:
                 delta = 0.5 * np.linalg.norm(p)
 
-            if rho > self.eta and self.check_convergence():
+            if self.check_convergence():
                 logging.debug("Convergence reached")
                 break
 
@@ -181,7 +185,5 @@ class TrustRegion(MinimizationAlgorithm):
         self.stats["cpu_time_per_iter"] = et / self.stats["iter"]
 
         self.stats["min_f"] = fx
-
-        self.append_to_history(x, fx, delta, True)
 
         return self.history, self.stats

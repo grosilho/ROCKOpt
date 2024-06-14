@@ -21,19 +21,28 @@ class Madelon(Problem):
         self.scale = 1e0
 
         self.train_features = jnp.array(train_df.drop('target', axis=1).to_numpy()) * self.scale
-        self.train_targets = jnp.array(train_df['target'].to_numpy())
         self.test_features = jnp.array(test_df.drop('target', axis=1).to_numpy()) * self.scale
+        self.train_targets = jnp.array(train_df['target'].to_numpy())
         self.test_targets = jnp.array(test_df['target'].to_numpy())
 
-        self.tau = 5e3
+        # Convert -1, 1 to 0, 1
+        self.train_targets = (self.train_targets + 1.0) / 2.0
+        self.test_targets = (self.test_targets + 1.0) / 2.0
+        # Standardize the data
+        # mu = jnp.mean(jnp.vstack((self.train_features, self.test_features)), axis=0)
+        # sigma = jnp.std(jnp.vstack((self.train_features, self.test_features)), axis=0)
+        # self.train_features = (self.train_features - mu) / sigma
+        # self.test_features = (self.test_features - mu) / sigma
+        # Add ones for bias
+        self.train_features = jnp.hstack((self.train_features, jnp.ones((self.train_features.shape[0], 1))))
+        self.test_features = jnp.hstack((self.test_features, jnp.ones((self.test_features.shape[0], 1))))
+
+        # Regularization parameter
+        self.tau = 1e3
 
         self.n_samples = self.train_features.shape[0]
         self.dim = self.train_features.shape[1]
         super().__init__('Madelon', self.dim)
-
-        # print(train_df.loc[0, :])
-        # print(train_features[0, :])
-        # print(train_target[0])
 
     @partial(jit, static_argnums=(0,))
     def f(self, x):
@@ -48,28 +57,23 @@ class Madelon(Problem):
         return jnp.mean(jax.vmap(self.f_loc, in_axes=[None, 0, 0])(x, self.test_features, self.test_targets))
 
     def f_loc(self, x, features, targets):
-        return jnp.log(self.inv_expit(targets * jnp.dot(features, x)))
+        # logistic regression
+        return -targets * jnp.log(self.expit(jnp.dot(features, x))) - (1.0 - targets) * jnp.log(
+            1.0 - self.expit(jnp.dot(features, x))
+        )
 
-    def inv_expit(self, x):
-        return 1.0 + jnp.exp(-x)
+    def expit(self, x):
+        return 1.0 / (1.0 + jnp.exp(-x))
 
     def penalization(self, x):
         return 0.5 * self.tau * jnp.dot(x, x)
 
     def initial_guess(self):
         key = jax.random.key(1989)
-        return jax.random.normal(key, shape=(self.dim,)) / 1e2
-        # return jnp.zeros(self.dim)
-
-    def rho(self, x):
-        v = 1.0 / (1.0 + jnp.exp(self.train_targets * jnp.dot(self.train_features, x))) ** 2
-        w = jnp.sum(self.train_features, axis=1)
-        rho_f_train = jnp.max(jnp.dot(v * w, self.train_features)) / self.n_samples
-        rho_penalization = self.tau
-        return rho_f_train + rho_penalization
+        return jax.random.normal(key, shape=(self.dim,)) / 1e5
 
     def accuracy(self, x, features, targets):
-        pred = jnp.sign(jnp.dot(features, x))
+        pred = jnp.round(self.expit(jnp.dot(features, x)))
         return jnp.sum(abs(pred - targets) < 1e-2) / len(targets)
 
     def plot(self, history, plot_options):
@@ -81,8 +85,11 @@ class Madelon(Problem):
 
         ax1 = fig.add_subplot(321)
         ax2 = fig.add_subplot(322)
+        # Loss function + penalization and delta
         self.plot_fx_and_delta(ax1, ax2, history, plot_options)
 
+        # Loss function without penalization for train and test
+        # Accuracy for train and test
         ax3 = fig.add_subplot(323)
         ax4 = fig.add_subplot(324)
         ax5 = fig.add_subplot(325)
