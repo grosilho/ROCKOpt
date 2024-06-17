@@ -8,14 +8,11 @@ class RKW1:
         self.even_s = False
         self.safe_add = safe_add
 
-        paths = os.environ["PYTHONPATH"].split(os.pathsep)
-        coeff = None
-        for path in paths:
-            coeff_file = path + "/pySDC/projects/Monodomain/explicit_stabilized_classes/coeff_P.csv"
-            if os.path.exists(coeff_file):
-                coeff = np.loadtxt(coeff_file, delimiter=",", dtype=float, skiprows=1)
-
-        if coeff is None:
+        executed_file_dir = os.path.dirname(os.path.realpath(__file__))
+        coeff_file = executed_file_dir + "/coeff_P.csv"
+        if os.path.exists(coeff_file):
+            coeff = np.loadtxt(coeff_file, delimiter=",", dtype=float, skiprows=1)
+        else:
             raise Exception("Coefficients file for RKW1 not found.")
 
         self.s_max = np.max(coeff[:, 0].astype(int))

@@ -34,7 +34,7 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
 
         self.logger = logging.getLogger("StabilizedNewtonFlow")
 
-    def solve(self, F, x, delta=0.0, **kwargs):
+    def solve(self, F, x, delta=None, max_iter=None, **kwargs):
         """
         Solves the minimization problem trying to follow the Newton direction.
         To do so we solve the ODE system
@@ -46,7 +46,13 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
         The smaller the eps the faster p converges to the Newton direction, but stiffness increases with eps->0.
         """
 
-        if delta == 0.0:
+        self.init_stats()
+        self.init_history()
+
+        if max_iter is None:
+            max_iter = self.max_iter
+
+        if delta is None:
             delta = self.delta_max
 
         n = self.n
@@ -108,12 +114,8 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
 
             self.append_to_history(x, F.f(x), delta, True)
 
-            if self.check_convergence():
-                self.logger.debug("Convergence reached")
-                break
-
-            if self.stats["iter"] >= self.max_iter:
-                self.logger.warning("Maximum number of iterations reached")
+            f_diff = self.history["fx"][-1] - self.history["fx"][-2]
+            if self.check_convergence(np.abs(f_diff), np.linalg.norm(dj[:n]), max_iter):
                 break
 
         et = time.process_time() - et

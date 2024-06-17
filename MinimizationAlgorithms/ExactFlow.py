@@ -10,11 +10,17 @@ class ExactFlow(MinimizationAlgorithm):
         super().__init__(max_iter, atol, rtol, n, description)
         self.delta_max = delta_max
 
-    def solve(self, F, x, delta=0.0, **kwargs):
+    def solve(self, F, x, delta=None, max_iter=None, **kwargs):
         """
         Solves very precisely the gradient or the newton flow, depending on the subclass.
         """
-        if delta == 0.0:
+        self.init_stats()
+        self.init_history()
+
+        if max_iter is None:
+            max_iter = self.max_iter
+
+        if delta is None:
             delta = self.delta_max
 
         self.append_to_history(x, F.f(x), delta, True)
@@ -30,12 +36,8 @@ class ExactFlow(MinimizationAlgorithm):
 
             self.append_to_history(x, F.f(x), delta, True)
 
-            if self.check_convergence():
-                self.logger.debug("Convergence reached")
-                break
-
-            if self.stats["iter"] >= self.max_iter:
-                self.logger.warning("Maximum number of iterations reached in exact flow computation.")
+            f_diff = self.history["fx"][-1] - self.history["fx"][-2]
+            if self.check_convergence(np.abs(f_diff), np.linalg.norm(p), max_iter):
                 break
 
         et = time.process_time() - et
@@ -48,8 +50,8 @@ class ExactFlow(MinimizationAlgorithm):
 
 
 class ExactGradientFlow(ExactFlow):
-    def __init__(self, max_iter, tol, n, delta_max):
-        super().__init__(max_iter, tol, n, delta_max)
+    def __init__(self, max_iter, atol, rtol, n, delta_max):
+        super().__init__(max_iter, atol, rtol, n, delta_max)
         self.logger = logging.getLogger("ExactGradientFlow")
 
     def flow_direction(self, F, x):
@@ -58,8 +60,8 @@ class ExactGradientFlow(ExactFlow):
 
 
 class ExactNewtonFlow(ExactFlow):
-    def __init__(self, max_iter, tol, n, delta_max):
-        super().__init__(max_iter, tol, n, delta_max)
+    def __init__(self, max_iter, atol, rtol, n, delta_max):
+        super().__init__(max_iter, atol, rtol, n, delta_max)
         self.logger = logging.getLogger("ExactNewtonFlow")
 
     def flow_direction(self, F, x):

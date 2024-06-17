@@ -118,7 +118,7 @@ class TrustRegion(MinimizationAlgorithm):
         self.stats["ddf_mults"] += 1
         return pU, np.dot(g, pU), np.dot(pU, BpU)
 
-    def solve(self, F, x, delta=0.0, record_rejected=False):
+    def solve(self, F, x, delta=None, record_rejected=False, max_iter=None):
         """
         Solve minimization problem using trust region method.
         Parameters:
@@ -127,7 +127,14 @@ class TrustRegion(MinimizationAlgorithm):
         delta: trust region radius. If 0, it will be set to its maximium value
         """
 
-        if delta == 0.0:
+        # Clean stats and history
+        self.init_stats()
+        self.init_history()
+
+        if max_iter is None:
+            max_iter = self.max_iter
+
+        if delta is None:
             delta = self.delta_max
 
         p = -F.df(x)  # np.zeros_like(x)
@@ -137,7 +144,7 @@ class TrustRegion(MinimizationAlgorithm):
         fx = F.f(x)
         self.stats["f_evals"] += 1
 
-        self.append_to_history(x, fx, 0.0, True)
+        self.append_to_history(x, fx, delta, True)
 
         while True:
             if self.local_problem_sol == "dog_leg":
@@ -150,9 +157,9 @@ class TrustRegion(MinimizationAlgorithm):
             fxp = F.f(x + p)
             self.stats["f_evals"] += 1
 
-            true_diff = fx - fxp
+            f_diff = fx - fxp
             model_diff = -gp - 0.5 * pBp
-            rho = true_diff / model_diff
+            rho = f_diff / model_diff
 
             self.stats["iter"] += 1
 
@@ -172,12 +179,7 @@ class TrustRegion(MinimizationAlgorithm):
             elif rho < 0.25:
                 delta = 0.5 * np.linalg.norm(p)
 
-            if self.check_convergence():
-                logging.debug("Convergence reached")
-                break
-
-            if self.stats["iter"] >= self.max_iter:
-                logging.warning("Maximum number of iterations reached")
+            if self.check_convergence(np.abs(f_diff), np.linalg.norm(p), max_iter):
                 break
 
         et = time.process_time() - et

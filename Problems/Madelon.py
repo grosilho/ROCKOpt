@@ -29,10 +29,10 @@ class Madelon(Problem):
         self.train_targets = (self.train_targets + 1.0) / 2.0
         self.test_targets = (self.test_targets + 1.0) / 2.0
         # Standardize the data
-        # mu = jnp.mean(jnp.vstack((self.train_features, self.test_features)), axis=0)
-        # sigma = jnp.std(jnp.vstack((self.train_features, self.test_features)), axis=0)
-        # self.train_features = (self.train_features - mu) / sigma
-        # self.test_features = (self.test_features - mu) / sigma
+        mu = jnp.mean(jnp.vstack((self.train_features, self.test_features)), axis=0)
+        sigma = jnp.std(jnp.vstack((self.train_features, self.test_features)), axis=0)
+        self.train_features = (self.train_features - mu) / sigma
+        self.test_features = (self.test_features - mu) / sigma
         # Add ones for bias
         self.train_features = jnp.hstack((self.train_features, jnp.ones((self.train_features.shape[0], 1))))
         self.test_features = jnp.hstack((self.test_features, jnp.ones((self.test_features.shape[0], 1))))
@@ -56,21 +56,24 @@ class Madelon(Problem):
     def f_test(self, x):
         return jnp.mean(jax.vmap(self.f_loc, in_axes=[None, 0, 0])(x, self.test_features, self.test_targets))
 
+    @partial(jit, static_argnums=(0,))
     def f_loc(self, x, features, targets):
         # logistic regression
         return -targets * jnp.log(self.expit(jnp.dot(features, x))) - (1.0 - targets) * jnp.log(
             1.0 - self.expit(jnp.dot(features, x))
         )
 
+    @partial(jit, static_argnums=(0,))
     def expit(self, x):
         return 1.0 / (1.0 + jnp.exp(-x))
 
+    @partial(jit, static_argnums=(0,))
     def penalization(self, x):
         return 0.5 * self.tau * jnp.dot(x, x)
 
     def initial_guess(self):
         key = jax.random.key(1989)
-        return jax.random.normal(key, shape=(self.dim,)) / 1e5
+        return jax.random.normal(key, shape=(self.dim,)) / 1e1
 
     def accuracy(self, x, features, targets):
         pred = jnp.round(self.expit(jnp.dot(features, x)))

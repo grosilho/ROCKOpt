@@ -1,15 +1,11 @@
 def plot_options():
-    opts = dict()
+    import matplotlib.pyplot as plt
 
-    opts["TR"] = {"plot_circles": False, "marker": "o", "color": "blue"}
-    opts["StabTR"] = {"plot_circles": False, "marker": "x", "color": "green"}
-    opts["StabGF"] = {"plot_circles": False, "marker": "s", "color": "red"}
-    opts["StabNF"] = {"plot_circles": False, "marker": "d", "color": "purple"}
-    opts["SplitStabNF"] = {"plot_circles": False, "marker": "^", "color": "orange"}
-    opts["ExactGF"] = {"plot_circles": False, "marker": "none", "color": "black"}
-    opts["ExactNF"] = {"plot_circles": False, "marker": "<", "color": "brown"}
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    markers = ["o", "x", "s", "d", "^", "<", ">"]
 
-    return opts
+    return colors, markers
 
 
 def print_table(stats):

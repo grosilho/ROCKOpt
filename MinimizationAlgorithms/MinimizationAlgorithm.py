@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 
 
 class MinimizationAlgorithm:
@@ -9,7 +10,7 @@ class MinimizationAlgorithm:
         self.n = n
         self.description = description
 
-        self.history = {"x": [], "fx": [], "delta": [], "accepted": []}
+    def init_stats(self):
         self.stats = {
             "iter": 0,
             "cpu_time": 0.0,
@@ -22,20 +23,23 @@ class MinimizationAlgorithm:
             "min_f": 0.0,
         }
 
+    def init_history(self):
+        self.history = {"x": [], "fx": [], "delta": [], "accepted": []}
+
     def append_to_history(self, x, fx, delta, accepted):
         self.history["x"].append(x)
         self.history["fx"].append(fx)
         self.history["delta"].append(delta)
         self.history["accepted"].append(accepted)
 
-    def check_convergence(self):
-        if len(self.history["x"]) < 2:
-            return False
-        fx_conv = np.abs(self.history["fx"][-1] - self.history["fx"][-2]) < np.max(
-            [self.rtol * np.abs(self.history["fx"][-1]), self.atol]
-        )
-        x_conv = np.linalg.norm(self.history["x"][-1] - self.history["x"][-2]) < np.max(
-            [self.rtol * np.linalg.norm(self.history["x"][-1]), self.atol]
-        )
+    def check_convergence(self, f_diff, p_norm, max_iter):
 
-        return fx_conv or x_conv
+        fx_conv = f_diff < np.max([self.rtol * np.abs(self.history["fx"][-1]), self.atol])
+        x_conv = p_norm < np.max([self.rtol * np.linalg.norm(self.history["x"][-1]), self.atol])
+
+        if fx_conv or x_conv:
+            self.logger.debug("Convergence reached")
+            return True
+        elif self.stats["iter"] >= max_iter:
+            self.logger.warning("Maximum number of iterations reached")
+            return True
