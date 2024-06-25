@@ -8,7 +8,7 @@ from .Problem import Problem
 class MinimalSurface(Problem):
     def __init__(self, M):
         # M is the number of grid points in one direction, thus in total we have M*M grid points
-        super().__init__('MinimalSurface', M * M)
+        super().__init__('MinimalSurface')
 
         # grid with boundary
         self.sqrt_n = M  # self.n = M * M

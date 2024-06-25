@@ -38,7 +38,7 @@ x0 = Fun.initial_guess()
 
 # Set a list of minimization algorithms to run and compare
 min_algs = [
-    "TrustRegion",
+    # "TrustRegion",
     "StabilizedTrustRegion",
     # "StabilizedGradientFlow",
     # "StabilizedNewtonFlow",
@@ -47,7 +47,7 @@ min_algs = [
     # "ExactNewtonFlow",
 ]
 
-common_options = options = {"n": Fun.n, "max_iter": 1e2, "rtol": 1e-6, "atol": 0.0}
+common_options = options = {"max_iter": 1e2, "rtol": 1e-6, "atol": 0.0}
 
 specific_options = dict()
 specific_options["TrustRegion"] = {
@@ -62,8 +62,8 @@ specific_options["StabilizedTrustRegion"] = {
     "delta_max": 1.0,
     "eta": 1e-4,
     "method": "RKC1",
-    "damping": 10.0,
-    "safe_add": 1,
+    "damping": 0.5,
+    "safe_add": 2,
     "dt": 1.0,
     "max_steps": 100,
     "p_conv_tol": 1e-2,

@@ -39,15 +39,16 @@ x0 = Fun.initial_guess()
 # Set a list of minimization algorithms to run and compare
 min_algs = [
     # "TrustRegion",
-    # "StabilizedTrustRegion",
+    "StabilizedTrustRegion",
     # "StabilizedGradientFlow",
     # "StabilizedNewtonFlow",
     # "SplitStabilizedNewtonFlow",
-    "ExactGradientFlow",
+    # "ExactGradientFlow",
     # "ExactNewtonFlow",
 ]
 
-common_options = options = {"n": Fun.n, "max_iter": 1e2, "rtol": 1e-6, "atol": 0.0}
+# all methods use the same stopping criteria, and these are its parameters
+common_options = {"max_iter": 1e3, "rtol": 5e-3, "atol": 0.0}
 
 specific_options = dict()
 specific_options["TrustRegion"] = {
@@ -55,26 +56,26 @@ specific_options["TrustRegion"] = {
     "eta": 1e-4,
     "loc_prob_sol": "dog_leg",
     "method": "iterative",
-    "iter_solver_tol": 1e-5,
+    "iter_solver_tol": 1e-4,
     "iter_solver_maxiter": 100,
 }
 specific_options["StabilizedTrustRegion"] = {
     "delta_max": 2.0,
     "eta": 1e-4,
     "method": "RKC1",
-    "damping": 40.0,
-    "safe_add": 1,
-    "dt": 1e-2,
-    "max_steps": 5,
-    "p_conv_tol": 1e-2,
-    "rho_freq": 10,
-}
-specific_options["StabilizedGradientFlow"] = {
-    "delta_max": 0.01,
-    "method": "RKC1",
     "damping": 10.0,
     "safe_add": 2,
-    "rho_freq": 10,
+    "dt": 0.1,
+    "max_steps": 100,
+    "p_conv_tol": 1e-3,
+    "rho_freq": 1,
+}
+specific_options["StabilizedGradientFlow"] = {
+    "delta_max": 20.0,
+    "method": "RKC1",
+    "damping": 1.0,
+    "safe_add": 1,
+    "rho_freq": 5,
     "record_stages": False,
 }
 specific_options["StabilizedNewtonFlow"] = {
@@ -125,4 +126,4 @@ with jax.disable_jit(not jit):
 
 print_stuff.print_table(stats)
 
-Fun.plot(history, print_stuff.plot_options())
+Fun.plot(history)

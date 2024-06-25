@@ -1,15 +1,82 @@
 import logging
-import numpy as np
+import jax
+import jax.numpy as jnp
+from jax import jit
+from functools import partial
+import scipy.sparse.linalg
 
 
 class rho_estimator:
     def __init__(self, n):
         self.logger = logging.getLogger("rho_estimator")
 
-        self.shape = (n,)
-        self.fx = np.array(self.shape)
-        self.eigvec = np.random.rand(*self.shape)
+        key = jax.random.key(1989)
+        self.eigvec = jax.random.normal(key, shape=(n,))
         self.eigval = 0.0
+
+    def rho_linear_scipy(self, A):
+        """
+        Estimate the spectral radius of a linear operator A with scipy.sparse.linalg.eigs.
+
+        Args:
+            A: A is a function that takes a vector and returns a vector.
+
+        Returns:
+            The spectral radius of A.
+        """
+
+        tol = 1e-4
+        eigvals, eigvecs = scipy.sparse.linalg.eigs(
+            A, k=1, v0=self.eigvec, which="LM", return_eigenvectors=True, tol=tol
+        )
+        self.eigval = eigvals[0].real
+        self.eigvec = eigvecs[:, 0].real
+
+        return self.eigval
+
+    def rho_linear_power_method(self, A):
+        """
+        Estimate the spectral radius of a linear operator A with power method.
+        Args:
+            A: A is a function that takes a vector and returns a vector.
+
+        Returns:
+            The spectral radius of A.
+        """
+
+        maxiter = 100
+        tol = 1e-4
+        n_f_eval = 0
+
+        eigval_old = self.eigval
+        eigvec_old = self.eigvec
+
+        # Start the power method for linear operator A
+        for iter in range(1, maxiter + 1):
+
+            eigvec = A(eigvec_old)
+            eigvec /= jnp.linalg.norm(eigvec)
+            eigval = jnp.dot(eigvec, A(eigvec))  # Rayleigh quotient
+
+            n_f_eval += 1
+
+            self.logger.debug(f"rho_estimator: iter = {iter}, eigval = {eigval}")
+
+            if abs(eigval - eigval_old) <= eigval * tol:
+                break
+
+            eigval_old = eigval
+            eigvec_old = eigvec
+
+        if iter == maxiter and abs(eigval - eigval_old) > eigval * tol:
+            self.logger.warning("Spectral radius estimator did not converge.")
+
+        self.logger.info(f"Estimated rho = {eigval:1.2e} in {iter} iterations.")
+
+        self.eigvec = eigvec
+        self.eigval = eigval
+
+        return eigval, n_f_eval
 
     def rho(self, f, y, fy=None):
         """
@@ -29,8 +96,8 @@ class rho_estimator:
 
         maxiter = 100
         safe = 1.05
-        tol = 1e-2
-        small = 1e-4
+        tol = 1e-4
+        small = 1e-6
         n_f_eval = 0
         tol_norm = 1e-6
 
@@ -40,8 +107,8 @@ class rho_estimator:
 
         eigval = self.eigval
         z = self.eigvec
-        y_norm = np.linalg.norm(y) / np.sqrt(len(y))
-        z_norm = np.linalg.norm(z) / np.sqrt(len(z))
+        y_norm = jnp.linalg.norm(y) / jnp.sqrt(len(y))
+        z_norm = jnp.linalg.norm(z) / jnp.sqrt(len(z))
 
         # Building the vector z so that the difference z-yn is small
         if y_norm > tol_norm and z_norm > tol_norm:
@@ -61,9 +128,9 @@ class rho_estimator:
             z *= quot
         else:
             # here z=0 becomes z=random and z = z*small/|z|
-            z = np.random.rand(*self.shape)
+            z = jnp.random.rand(*self.shape)
             dzy = small
-            z_norm = np.linalg.norm(z)
+            z_norm = jnp.linalg.norm(z)
             quot = dzy / z_norm
             z *= quot
 
@@ -83,7 +150,7 @@ class rho_estimator:
             eigvec -= fy
             n_f_eval += 1
 
-            dfzfy = np.linalg.norm(eigvec)
+            dfzfy = jnp.linalg.norm(eigvec)
 
             eigval_very_old = eigval_old
             eigval_old = eigval

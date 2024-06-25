@@ -10,7 +10,7 @@ class Rosenbrock(Problem):
     def __init__(self, dim=2):
         self.dim = dim
         assert self.dim == 2 or self.dim == 3, "Rosenbrock only supports 2 or 3 dimensions"
-        super().__init__('Rosenbrock', dim)
+        super().__init__('Rosenbrock')
 
     def initial_guess(self):
         if self.dim == 2:

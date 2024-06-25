@@ -6,9 +6,8 @@ from print_stuff import plot_options
 
 
 class Problem:
-    def __init__(self, name, n):
+    def __init__(self, name):
         self.name = name
-        self.n = n
 
     @partial(jit, static_argnums=(0,))
     def df(self, x):

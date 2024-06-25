@@ -5,9 +5,9 @@ from .MinimizationAlgorithm import MinimizationAlgorithm
 
 
 class ExactFlow(MinimizationAlgorithm):
-    def __init__(self, max_iter, atol, rtol, n, delta_max):
+    def __init__(self, max_iter, atol, rtol, delta_max):
         description = "Exact" + ("GF" if "Gradient" in self.__class__.__name__ else "NF")
-        super().__init__(max_iter, atol, rtol, n, description)
+        super().__init__(max_iter, atol, rtol, description)
         self.delta_max = delta_max
 
     def solve(self, F, x, delta=None, max_iter=None, **kwargs):
@@ -50,8 +50,8 @@ class ExactFlow(MinimizationAlgorithm):
 
 
 class ExactGradientFlow(ExactFlow):
-    def __init__(self, max_iter, atol, rtol, n, delta_max):
-        super().__init__(max_iter, atol, rtol, n, delta_max)
+    def __init__(self, max_iter, atol, rtol, delta_max):
+        super().__init__(max_iter, atol, rtol, delta_max)
         self.logger = logging.getLogger("ExactGradientFlow")
 
     def flow_direction(self, F, x):
@@ -60,8 +60,8 @@ class ExactGradientFlow(ExactFlow):
 
 
 class ExactNewtonFlow(ExactFlow):
-    def __init__(self, max_iter, atol, rtol, n, delta_max):
-        super().__init__(max_iter, atol, rtol, n, delta_max)
+    def __init__(self, max_iter, atol, rtol, delta_max):
+        super().__init__(max_iter, atol, rtol, delta_max)
         self.logger = logging.getLogger("ExactNewtonFlow")
 
     def flow_direction(self, F, x):

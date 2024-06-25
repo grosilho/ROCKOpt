@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 import time
+from scipy.sparse.linalg import LinearOperator
 from .es_methods import RKW1, RKC1, RKU1
 from .rho_estimator import rho_estimator
 from ..MinimizationAlgorithm import MinimizationAlgorithm
@@ -12,7 +13,6 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
         max_iter,
         atol,
         rtol,
-        n,
         delta_max=0.1,
         rho_freq=5,
         method="RKC1",
@@ -22,14 +22,14 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
     ):
 
         description = "StabGF|" + method
-        super().__init__(max_iter, atol, rtol, n, description)
+        super().__init__(max_iter, atol, rtol, description)
 
         self.record_stages = record_stages
         self.rho_freq = rho_freq
         self.method = method
         self.delta_max = delta_max
         self.es = eval(method)(damping, safe_add)
-        self.rho_estimator = rho_estimator(n)
+        self.rho_estimator = None
 
         self.logger = logging.getLogger("StabilizedGradientFlow")
 
@@ -56,19 +56,20 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
         rho_old = 0.0
         s_old = 0
 
+        if self.rho_estimator is None:
+            self.rho_estimator = rho_estimator(x.size)
+
         self.append_to_history(x, F.f(x), delta, True)
 
-        et = time.process_time()
+        et = time.time()
 
         while True:
             fx = f(x)
 
             # re-estimate rho every rho_freq iterations
             if self.stats["iter"] % self.rho_freq == 0:
-                if not hasattr(F, "rho"):
-                    rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
-                else:
-                    rho = F.rho(x)
+                # rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
+                rho, n_f_eval = self.rho_estimator.rho_linear_power_method(lambda v: F.ddfv(x, v))
 
             # update coefficients if rho has changed
             if rho != rho_old:
@@ -79,9 +80,6 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
                     self.es.update_coefficients(s)
 
             self.stats["iter"] += 1
-            self.logger.info(
-                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}"
-            )
 
             djm2, djm1 = 0.0, 0.0
             dj = self.es.mu[0] * delta * fx
@@ -96,10 +94,17 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
             self.append_to_history(x, F.f(x), delta, True)
 
             f_diff = self.history["fx"][-1] - self.history["fx"][-2]
-            if self.check_convergence(np.abs(f_diff), np.linalg.norm(dj), max_iter):
+            norm_dj = np.linalg.norm(dj)
+
+            self.logger.info(
+                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}"
+                + f", dx = {norm_dj:.3e}, df = {f_diff:.3e}"
+            )
+
+            if self.check_convergence(np.abs(f_diff), norm_dj, max_iter):
                 break
 
-        et = time.process_time() - et
+        et = time.time() - et
         self.stats["cpu_time"] = et
         self.stats["cpu_time_per_iter"] = et / self.stats["iter"]
         self.stats["min_f"] = F.f(x)

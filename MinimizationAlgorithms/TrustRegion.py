@@ -5,13 +5,23 @@ import time
 from .MinimizationAlgorithm import MinimizationAlgorithm
 
 
+# Helper class to count the number of iterative solver iterations
+class solver_matrixvec_mult_counter:
+    def __init__(self):
+        # Store the number of iterations
+        self.niter = 0
+
+    def __call__(self, rk=None):
+        # Increment the number of iterations at each call
+        self.niter += 1
+
+
 class TrustRegion(MinimizationAlgorithm):
     def __init__(
         self,
         max_iter,
         atol,
         rtol,
-        n,
         delta_max,
         eta=1e-4,
         loc_prob_sol="dog_leg",
@@ -21,7 +31,7 @@ class TrustRegion(MinimizationAlgorithm):
     ):
 
         description = "TR|" + ("DL" if loc_prob_sol == "dog_leg" else "CP") + "|" + method.capitalize()
-        super().__init__(max_iter, atol, rtol, n, description=description)
+        super().__init__(max_iter, atol, rtol, description=description)
 
         self.delta_max = delta_max
         self.eta = eta
@@ -30,7 +40,7 @@ class TrustRegion(MinimizationAlgorithm):
         self.iter_solver_tol = iter_solver_tol
         self.iter_solver_maxiter = iter_solver_maxiter
 
-        self.pB0 = np.zeros(n)
+        self.pB0 = None
 
         self.logger = logging.getLogger("TrustRegion")
 
@@ -46,6 +56,9 @@ class TrustRegion(MinimizationAlgorithm):
         gp: g^T p
         pBp: p^T B p
         """
+        if self.pB0 is None:
+            self.pB0 = -F.df(x)
+
         pB, g, B = self.newton_direction(self.pB0, F, x)
         self.pB0 = pB
 
@@ -88,10 +101,18 @@ class TrustRegion(MinimizationAlgorithm):
                 self.stats["ddf_mults"] += 1
                 return F.ddfv(x, v)
 
+            matvec_counter = solver_matrixvec_mult_counter()
             Bv_op = scipy.sparse.linalg.LinearOperator((p.size, p.size), matvec=Bv)
             pB, exit_code = scipy.sparse.linalg.cg(
-                Bv_op, -g, x0=p, rtol=self.iter_solver_tol, maxiter=self.iter_solver_maxiter, M=None
+                Bv_op,
+                -g,
+                x0=p,
+                rtol=self.iter_solver_tol,
+                maxiter=self.iter_solver_maxiter,
+                M=None,
+                callback=matvec_counter,
             )
+            self.stats["ddf_mults"] = matvec_counter.niter
             self.stats["ddf_solves"] += 1
         else:
             raise ValueError("Invalid linear solver")
@@ -139,7 +160,7 @@ class TrustRegion(MinimizationAlgorithm):
 
         p = -F.df(x)  # np.zeros_like(x)
 
-        et = time.process_time()
+        et = time.time()
 
         fx = F.f(x)
         self.stats["f_evals"] += 1
@@ -163,26 +184,33 @@ class TrustRegion(MinimizationAlgorithm):
 
             self.stats["iter"] += 1
 
-            self.logger.info(
-                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, rho = {rho:.3e}, {u"Δ"} = {delta:.3e}, accepted = {rho > self.eta}"
-            )
+            accepted = rho > self.eta and f_diff >= 0.0
 
-            if rho > self.eta:
+            if accepted:
                 x += p
                 fx = fxp
                 self.append_to_history(x, fx, delta, True)
             elif record_rejected:
                 self.append_to_history(x + p, fxp, delta, False)
 
-            if rho > 0.75 and np.isclose(np.linalg.norm(p), delta):
+            norm_p = np.linalg.norm(p)
+
+            self.logger.info(
+                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, rho = {rho:.3e}, {u"Δ"} = {delta:.3e}, accepted = {accepted}"
+                + f", dx = {norm_p:.3e}, df = {f_diff:.3e}, model df = {model_diff:.3e}"
+            )
+
+            if f_diff < 0.0:
+                delta = 0.5 * delta
+            elif rho > 0.75 and np.isclose(np.linalg.norm(p), delta):
                 delta = np.min([2 * delta, self.delta_max])
             elif rho < 0.25:
                 delta = 0.5 * np.linalg.norm(p)
 
-            if self.check_convergence(np.abs(f_diff), np.linalg.norm(p), max_iter):
+            if self.check_convergence(np.abs(f_diff), norm_p, max_iter):
                 break
 
-        et = time.process_time() - et
+        et = time.time() - et
         self.stats["cpu_time"] = et
         self.stats["cpu_time_per_iter"] = et / self.stats["iter"]
 

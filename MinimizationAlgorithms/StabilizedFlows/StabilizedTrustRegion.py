@@ -12,7 +12,6 @@ class StabilizedTrustRegion(TrustRegion):
         max_iter,
         atol,
         rtol,
-        n,
         delta_max,
         eta=1e-4,
         method="RKC1",
@@ -24,7 +23,7 @@ class StabilizedTrustRegion(TrustRegion):
         rho_freq=1,
     ):
 
-        super().__init__(max_iter, atol, rtol, n, delta_max, eta, loc_prob_sol="dog_leg")
+        super().__init__(max_iter, atol, rtol, delta_max, eta, loc_prob_sol="dog_leg")
         self.description = "StabTR|" + method
 
         self.es_params = {
@@ -35,7 +34,7 @@ class StabilizedTrustRegion(TrustRegion):
         }
 
         self.es = eval(method)(damping, safe_add)
-        self.eigval_estimator = rho_estimator(n)
+        self.rho_estimator = None
         self.eigval = 0.0
         self.s = 0
         self.rho_count = 0
@@ -69,6 +68,9 @@ class StabilizedTrustRegion(TrustRegion):
         eigval = self.eigval
         s = self.s
 
+        if self.rho_estimator is None:
+            self.rho_estimator = rho_estimator(x.size)
+
         i = 0
         while True:
 
@@ -76,7 +78,8 @@ class StabilizedTrustRegion(TrustRegion):
 
             # Note that this if can be executed only at first iteration (i=0)
             if self.rho_count % self.es_params["rho_freq"] == 0 and i == 0:
-                eigval, n_f_eval = self.eigval_estimator.rho(f, p, fp)
+                # eigval, n_f_eval = self.rho_estimator.rho(f, p, fp)
+                eigval, n_f_eval = self.rho_estimator.rho_linear_power_method(lambda v: F.ddfv(x, v))
             if eigval != self.eigval:
                 self.eigval = eigval
                 s = self.es.get_s(dt * eigval)
@@ -91,6 +94,7 @@ class StabilizedTrustRegion(TrustRegion):
                 dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * dt * f(p + djm1)
 
             p = p + dj
+
             res = f(p)
 
             i += 1

@@ -82,11 +82,8 @@ class StabilizedNewtonFlow(MinimizationAlgorithm):
 
             # re-estimate rho every rho_freq iterations
             if self.stats["iter"] % self.rho_freq == 0:
-                # rho, n_f_evals = self.rho_estimator.rho(f, y, fy)
-                if not hasattr(F, "rho"):
-                    rho, n_f_eval = self.rho_estimator.rho(f, y, fy)
-                else:
-                    rho = F.rho(y[:n])
+                # rho, n_f_eval = self.rho_estimator.rho(f, y, fy)
+                rho, n_f_eval = self.rho_estimator.rho_linear_power_method(lambda v: F.ddfv(x, v) / self.eps)
 
             # update coefficients if rho has changed
             if rho != rho_old:
