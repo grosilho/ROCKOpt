@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 import logging
-from MinimizationAlgorithms import (
+from Solvers.Opt import (
     TrustRegion,
     StabilizedTrustRegion,
     StabilizedGradientFlow,
@@ -11,7 +11,7 @@ from MinimizationAlgorithms import (
     ExactGradientFlow,
     ExactNewtonFlow,
 )
-from Problems import Rosenbrock
+from Problems.Opt import Rosenbrock
 import print_stuff
 
 gpu = True

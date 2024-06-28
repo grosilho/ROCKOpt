@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 import logging
-from MinimizationAlgorithms import (
+from Solvers.Opt import (
     TrustRegion,
     StabilizedTrustRegion,
     StabilizedGradientFlow,
@@ -11,7 +11,7 @@ from MinimizationAlgorithms import (
     ExactGradientFlow,
     ExactNewtonFlow,
 )
-from Problems import Huber
+from Problems.Opt import Huber
 import print_stuff
 
 gpu = False
@@ -39,8 +39,8 @@ x0 = Fun.initial_guess()
 # Set a list of minimization algorithms to run and compare
 min_algs = [
     "TrustRegion",
-    # "StabilizedTrustRegion",
-    # "StabilizedGradientFlow",
+    "StabilizedTrustRegion",
+    "StabilizedGradientFlow",
     # "StabilizedNewtonFlow",
     # "SplitStabilizedNewtonFlow",
     # "ExactGradientFlow",
