@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from flax.metrics import tensorboard
 import logging
 
-from Solvers.ML import SGD, Adam, TrustRegion
+from Solvers.ML import SGD, Adam, TrustRegion, StabilizedGradientFlow
 from Problems.ML import Circles
 import print_stuff
 
@@ -47,18 +47,33 @@ problem = Circles(n_samples, n_epochs, batch_size, dtype)
 history = dict()
 stats = dict()
 
-TR_options = {
-    "max_iter": 1e2,
-    "rtol": 1e-4,
-    "atol": 0.0,
-    "delta_max": 2.0,
+common_options = options = {"max_iter": 30, "rtol": 1e-6, "atol": 0.0}
+
+specific_options = dict()
+specific_options["TrustRegion"] = {
+    "delta_max": 1.0,
     "eta": 1e-4,
     "loc_prob_sol": "dog_leg",
-    "method": "iterative",
-    "iter_solver_tol": 1e-4,
+    "method": "direct",
+    "iter_solver_tol": 1e-5,
     "iter_solver_maxiter": 100,
 }
-TR = TrustRegion(problem, tensorboard_writer, TR_options)
-history[TR.description], stats[TR.description] = TR.train()
+specific_options["StabilizedGradientFlow"] = {
+    "delta_max": 5.0,
+    "method": "RKC1",
+    "damping": 10.0,
+    "safe_add": 1,
+    "rho_freq": 10,
+    "record_stages": False,
+}
+# TR = TrustRegion(problem, tensorboard_writer, **common_options, **specific_options["TrustRegion"])
+# history[TR.description], stats[TR.description] = TR.train()
+
+SGF = StabilizedGradientFlow(
+    problem, tensorboard_writer, **common_options, **specific_options["StabilizedGradientFlow"]
+)
+history[SGF.description], stats[SGF.description] = SGF.train()
 
 print_stuff.print_table(stats)
+
+problem.plot(history)

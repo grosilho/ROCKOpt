@@ -1,9 +1,4 @@
-from flax.training import train_state
-from jax import jit
-from functools import partial
-from typing import Any
-import numpy as np
-import logging
+from jax.numpy import abs
 import time
 
 from Problems.ML2Opt import ML2Opt
@@ -11,7 +6,7 @@ from Solvers.Opt.TrustRegion import TrustRegion as TrustRegionOpt
 
 
 class TrustRegion(TrustRegionOpt):
-    def __init__(self, problem, tensorboard_writer, options):
+    def __init__(self, problem, tensorboard_writer, **options):
         self.problemML = problem
         self.problemOpt = ML2Opt(self.problemML)
         self.tensorboard_writer = tensorboard_writer
@@ -76,7 +71,7 @@ class TrustRegion(TrustRegionOpt):
 
             i += 1
 
-            if self.check_convergence(np.abs(f_diff), norm_p, max_iter):
+            if self.check_convergence(abs(f_diff), norm_p, max_iter):
                 break
 
             fx = F.loss_and_update_batch_stats(x)

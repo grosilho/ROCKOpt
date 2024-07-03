@@ -53,8 +53,8 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
             self.stats["df_evals"] += 1
             return -F.df(y)
 
-        rho_old = 0.0
-        s_old = 0
+        self.rho_old = 0.0
+        self.s_old = 0
 
         if self.rho_estimator is None:
             self.rho_estimator = rho_estimator(x.size)
@@ -66,42 +66,20 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
         while True:
             fx = f(x)
 
-            # re-estimate rho every rho_freq iterations
-            if self.stats["iter"] % self.rho_freq == 0:
-                # rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
-                rho, n_f_eval = self.rho_estimator.rho_linear_power_method(lambda v: F.ddfv(x, v))
-
-            # update coefficients if rho has changed
-            if rho != rho_old:
-                rho_old = rho
-                s = self.es.get_s(delta * rho)
-                if s != s_old:
-                    s_old = s
-                    self.es.update_coefficients(s)
+            self.update_rho_and_stages(F, x, delta)
 
             self.stats["iter"] += 1
 
-            djm2, djm1 = 0.0, 0.0
-            dj = self.es.mu[0] * delta * fx
-            for j in range(2, s + 1):
-                if self.record_stages:
-                    self.append_to_history(x + dj, F.f(x + dj), delta, True)
-                djm2, djm1, dj = djm1, dj, djm2
-                dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * delta * f(x + djm1)
+            x, norm_dx = self.step(f, x, delta, fx)
 
-            x += dj
-
-            self.append_to_history(x, F.f(x), delta, True)
+            Fx = F.f(x)
+            self.append_to_history(x, Fx, delta, True)
 
             f_diff = self.history["fx"][-1] - self.history["fx"][-2]
-            norm_dj = np.linalg.norm(dj)
 
-            self.logger.info(
-                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, eigval = {rho:.3e}, {u"Δ"} = {delta:.3e}, s = {s}"
-                + f", dx = {norm_dj:.3e}, df = {f_diff:.3e}"
-            )
+            self.log(x, Fx, delta, norm_dx, f_diff)
 
-            if self.check_convergence(np.abs(f_diff), norm_dj, max_iter):
+            if self.check_convergence(np.abs(f_diff), norm_dx, max_iter):
                 break
 
         et = time.time() - et
@@ -110,3 +88,35 @@ class StabilizedGradientFlow(MinimizationAlgorithm):
         self.stats["min_f"] = F.f(x)
 
         return self.history, self.stats
+
+    def update_rho_and_stages(self, F, x, delta):
+        # re-estimate rho every rho_freq iterations
+        if self.stats["iter"] % self.rho_freq == 0:
+            # rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
+            self.rho, n_f_eval = self.rho_estimator.rho_linear_power_method(lambda v: F.ddfv(x, v))
+
+        # update coefficients if rho has changed
+        if self.rho != self.rho_old:
+            self.rho_old = self.rho
+            self.s = self.es.get_s(delta * self.rho)
+            if self.s != self.s_old:
+                self.s_old = self.s
+                self.es.update_coefficients(self.s)
+
+    def step(self, f, x, delta, fx):
+        djm2, djm1 = 0.0, 0.0
+        dj = self.es.mu[0] * delta * fx
+        for j in range(2, self.s + 1):
+            djm2, djm1, dj = djm1, dj, djm2
+            dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * delta * f(x + djm1)
+
+        x += dj
+        norm_dj = np.linalg.norm(dj)
+
+        return x, norm_dj
+
+    def log(self, x, fx, delta, norm_dx, f_diff):
+        self.logger.info(
+            f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {fx:.3e}, eigval = {self.rho:.3e}, {u"Δ"} = {delta:.3e}, s = {self.s}"
+            + f", dx = {norm_dx:.3e}, df = {f_diff:.3e}"
+        )

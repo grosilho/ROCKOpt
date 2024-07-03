@@ -56,3 +56,9 @@ class MinimizationAlgorithm:
         elif self.stats["iter"] >= max_iter:
             self.logger.warning("Maximum number of iterations reached")
             return True
+
+    def pre_iteration(self):
+        pass
+
+    def post_iteration(self):
+        pass

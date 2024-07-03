@@ -1,16 +1,10 @@
-from flax import linen as nn
-
-from flax.metrics import tensorboard
-from flax.training import train_state
 import jax
 import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 from jax import jit
 from functools import partial
-import numpy as np
-import optax
 import tensorflow as tf
-from typing import Any, Sequence
+from print_stuff import plot_options
 
 
 class Problem:
@@ -118,3 +112,13 @@ class Problem:
         if mean:
             accuracy = jnp.mean(accuracy)
         return accuracy
+
+    def plot_fx_and_delta(self, ax1, ax2, history):
+
+        for key, val, color, marker in zip(history.keys(), history.values(), *plot_options()):
+            ax1.semilogy(val["fx"], marker=marker, color=color, fillstyle='none', label=key)
+            ax2.plot(val["delta"], marker=marker, color=color, fillstyle='none', label=key)
+        ax1.set_title("Function value")
+        ax2.set_title("Trust region radius")
+        ax1.legend()
+        ax2.legend()

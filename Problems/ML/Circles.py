@@ -58,3 +58,17 @@ class Circles(Problem):
     @partial(jit, static_argnums=(0,))
     def accuracy_el_wise(self, results, labels):
         return jnp.argmax(results, -1) == labels
+
+    def plot(self, history):
+        import matplotlib.pyplot as plt
+
+        plt.set_loglevel(level='warning')
+        figsize = (18, 8)
+        fig = plt.figure(figsize=figsize)
+
+        ax1 = fig.add_subplot(321)
+        ax2 = fig.add_subplot(322)
+        # Loss function + penalization and delta
+        self.plot_fx_and_delta(ax1, ax2, history)
+
+        plt.show()
