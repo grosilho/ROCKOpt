@@ -158,7 +158,8 @@ class TrustRegion(MinimizationAlgorithm):
         if delta is None:
             delta = self.delta_max
 
-        p = -F.df(x)  # np.zeros_like(x)
+        p = -F.df(x)
+        self.stats["df_evals"] += 1
 
         et = time.time()
 
@@ -168,44 +169,16 @@ class TrustRegion(MinimizationAlgorithm):
         self.append_to_history(x, fx, delta, True)
 
         while True:
-            if self.local_problem_sol == "dog_leg":
-                p, gp, pBp = self.dog_leg(F, x, delta, p)
-            elif self.local_problem_sol == "cauchy_point":
-                p, gp, pBp = self.cauchy_point(F, x, delta)
-            else:
-                raise ValueError("Invalid local problem solver")
 
-            fxp = F.f(x + p)
-            self.stats["f_evals"] += 1
+            p, gp, pBp = self.compute_direction(F, x, delta, p)
 
-            f_diff = fx - fxp
-            model_diff = -gp - 0.5 * pBp
-            rho = f_diff / model_diff
-
-            self.stats["iter"] += 1
-
-            accepted = rho > self.eta and f_diff >= 0.0
-
-            if accepted:
-                x += p
-                fx = fxp
-                self.append_to_history(x, fx, delta, True)
-            elif record_rejected:
-                self.append_to_history(x + p, fxp, delta, False)
-
-            norm_p = np.linalg.norm(p)
-
-            self.logger.info(
-                f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {F.f(x):.3e}, rho = {rho:.3e}, {u"Δ"} = {delta:.3e}, accepted = {accepted}"
-                + f", dx = {norm_p:.3e}, df = {f_diff:.3e}, model df = {model_diff:.3e}"
+            rho, x, fx, accepted, norm_p, f_diff, model_diff = self.accept_or_reject_step(
+                F, x, delta, fx, p, gp, pBp, record_rejected
             )
 
-            if f_diff < 0.0:
-                delta = 0.5 * delta
-            elif rho > 0.75 and np.isclose(np.linalg.norm(p), delta):
-                delta = np.min([2 * delta, self.delta_max])
-            elif rho < 0.25:
-                delta = 0.5 * np.linalg.norm(p)
+            self.log(x, fx, rho, delta, accepted, norm_p, f_diff, model_diff)
+
+            delta = self.update_delta(f_diff, rho, norm_p, delta)
 
             if self.check_convergence(np.abs(f_diff), norm_p, max_iter):
                 break
@@ -217,3 +190,52 @@ class TrustRegion(MinimizationAlgorithm):
         self.stats["min_f"] = fx
 
         return self.history, self.stats
+
+    def compute_direction(self, F, x, delta, p):
+        if self.local_problem_sol == "dog_leg":
+            p, gp, pBp = self.dog_leg(F, x, delta, p)
+        elif self.local_problem_sol == "cauchy_point":
+            p, gp, pBp = self.cauchy_point(F, x, delta)
+        else:
+            raise ValueError("Invalid local problem solver")
+
+        return p, gp, pBp
+
+    def accept_or_reject_step(self, F, x, delta, fx, p, gp, pBp, record_rejected):
+        fxp = F.f(x + p)
+        self.stats["f_evals"] += 1
+
+        f_diff = fx - fxp
+        model_diff = -gp - 0.5 * pBp
+        rho = f_diff / model_diff
+
+        self.stats["iter"] += 1
+
+        accepted = rho > self.eta and f_diff >= 0.0
+
+        if accepted:
+            x += p
+            fx = fxp
+            self.append_to_history(x, fx, delta, True)
+        elif record_rejected:
+            self.append_to_history(x + p, fxp, delta, False)
+
+        norm_p = np.linalg.norm(p)
+
+        return rho, x, fx, accepted, norm_p, f_diff, model_diff
+
+    def log(self, x, fx, rho, delta, accepted, norm_p, f_diff, model_diff):
+        self.logger.info(
+            f"Iteration {self.stats["iter"]}: {(f'x = {x.ravel()}, ' if x.size < 5 else "")}f(x) = {fx:.3e}, rho = {rho:.3e}, {u"Δ"} = {delta:.3e}, accepted = {accepted}"
+            + f", dx = {norm_p:.3e}, df = {f_diff:.3e}, model df = {model_diff:.3e}"
+        )
+
+    def update_delta(self, f_diff, rho, norm_p, delta):
+        if f_diff < 0.0:
+            delta = 0.5 * delta
+        elif rho > 0.75 and np.isclose(norm_p, delta):
+            delta = np.min([2 * delta, self.delta_max])
+        elif rho < 0.25:
+            delta = 0.5 * norm_p
+
+        return delta

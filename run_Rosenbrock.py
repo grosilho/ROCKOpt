@@ -38,8 +38,8 @@ x0 = Fun.initial_guess()
 
 # Set a list of minimization algorithms to run and compare
 min_algs = [
-    # "TrustRegion",
-    "StabilizedTrustRegion",
+    "TrustRegion",
+    # "StabilizedTrustRegion",
     # "StabilizedGradientFlow",
     # "StabilizedNewtonFlow",
     # "SplitStabilizedNewtonFlow",

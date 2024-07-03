@@ -4,6 +4,7 @@ from flax.metrics import tensorboard
 from flax.training import train_state
 import jax
 import jax.numpy as jnp
+from jax.flatten_util import ravel_pytree
 from jax import jit
 from functools import partial
 import numpy as np
@@ -14,7 +15,7 @@ from typing import Any, Sequence
 
 class Problem:
     def __init__(self, n_epochs, batch_size, dtype=jnp.float32):
-        self.n_epochs = n_epochs
+        self.n_epochs = int(n_epochs)
         self.batch_size = batch_size
         self.dtype = dtype
 
@@ -23,6 +24,7 @@ class Problem:
         seed_model_init = 2002
 
         self.get_datasets(seed_datasets)
+        self.batch_size = int(min(self.batch_size, self.n_train_samples))
         self.train_ds_iterator = (
             self.train_ds.shuffle(buffer_size=self.train_ds.cardinality(), seed=seed_iterator)
             .padded_batch(self.batch_size, drop_remainder=True)
@@ -39,9 +41,14 @@ class Problem:
         variables = self.model.init(key, jnp.ones(shape=(2,)))
         self.params = variables['params']
         self.batch_stats = variables['batch_stats']
+        self.flatened_params, self.deflat_params = ravel_pytree(self.params)
+        pass
 
     def get_params_batch_stats(self):
         return self.params, self.batch_stats
+
+    def get_flattened_params_batch_stats(self):
+        return self.flatened_params, self.batch_stats
 
     def get_model(self):
         return self.model
@@ -74,15 +81,22 @@ class Problem:
     def loss_accuracy_batch_stats_grads(self, params, batch_stats):
         return self.grad_fn(params, batch_stats, self.batch['inputs'], self.batch['labels'])
 
-    @partial(jit, static_argnums=(0,))
-    def test_loss_accuracy(self, params, batch_stats):
-        losses = []
-        accuracies = []
-        for batch in (
+    def train_metrics(self, params, batch_stats):
+        return self.metrics(params, batch_stats, [self.batch])
+
+    def test_metrics(self, params, batch_stats):
+        batches = (
             self.test_ds.padded_batch(self.batch_size, drop_remainder=False)
             .prefetch(tf.data.AUTOTUNE)
             .as_numpy_iterator()
-        ):
+        )
+        return self.metrics(params, batch_stats, batches)
+
+    # @partial(jit, static_argnums=(0,))
+    def metrics(self, params, batch_stats, batches):
+        losses = []
+        accuracies = []
+        for batch in batches:
             results = self.model.apply({'params': params, 'batch_stats': batch_stats}, x=batch['inputs'], train=False)
             losses.append(self.loss(results, batch['labels'], False))
             accuracies.append(self.accuracy(results, batch['labels'], False))

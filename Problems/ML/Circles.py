@@ -14,11 +14,13 @@ from typing import Any, Sequence
 from .Problem import Problem
 from .NN import ExplicitMLP
 
+tf.config.experimental.set_visible_devices([], 'GPU')
+
 
 class Circles(Problem):
     def __init__(self, n_samples, n_epochs, batch_size, dtype=jnp.float32):
 
-        self.n_samples = n_samples
+        self.n_samples = int(n_samples)
         super().__init__(n_epochs, batch_size, dtype)
 
     def define_model(self):

@@ -1,4 +1,3 @@
-import jax.numpy as jnp
 from jax import grad, value_and_grad, jvp, jacfwd, jacrev
 from jax import jit
 from functools import partial

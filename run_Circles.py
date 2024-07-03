@@ -2,21 +2,13 @@ import jax
 import jax.numpy as jnp
 from flax.metrics import tensorboard
 import logging
-from Solvers.Opt import (
-    TrustRegion,
-    StabilizedTrustRegion,
-    StabilizedGradientFlow,
-    StabilizedNewtonFlow,
-    SplitStabilizedNewtonFlow,
-    ExactGradientFlow,
-    ExactNewtonFlow,
-)
-from Solvers.ML import SGD, Adam
+
+from Solvers.ML import SGD, Adam, TrustRegion
 from Problems.ML import Circles
 import print_stuff
 
 gpu = True
-jit = True
+jit = False
 float64 = False
 profile = False
 
@@ -33,21 +25,40 @@ print(f"Jax Default Device: {jnp.ones(3).devices()}")
 
 logging.basicConfig(level=logging.INFO)
 
+# tensordboard stuff
+workdir = "tensorboard_logs"
+tensorboard_writer = tensorboard.SummaryWriter(workdir)
 
 # hyperparameters
-learning_rate = 0.1
-n_epochs = 10
+n_epochs = 100
 n_samples = 1280  # then splittend in 75% train and 25% test
-batch_size = 128
+batch_size = jnp.inf  # if inf, then the whole dataset is used
 dtype = jnp.float32
 
 # Create the problem
 problem = Circles(n_samples, n_epochs, batch_size, dtype)
 
-# tensordboard stuff
-workdir = "tensorboard_logs"
-tensorboard_writer = tensorboard.SummaryWriter(workdir)
 
 # Create the optimizer
-optimizer = Adam(problem, tensorboard_writer, learning_rate)
-optimizer.train()
+# learning_rate = 0.1
+# optimizer = Adam(problem, tensorboard_writer, learning_rate)
+# optimizer.train()
+
+history = dict()
+stats = dict()
+
+TR_options = {
+    "max_iter": 1e2,
+    "rtol": 1e-4,
+    "atol": 0.0,
+    "delta_max": 2.0,
+    "eta": 1e-4,
+    "loc_prob_sol": "dog_leg",
+    "method": "iterative",
+    "iter_solver_tol": 1e-4,
+    "iter_solver_maxiter": 100,
+}
+TR = TrustRegion(problem, tensorboard_writer, TR_options)
+history[TR.description], stats[TR.description] = TR.train()
+
+print_stuff.print_table(stats)

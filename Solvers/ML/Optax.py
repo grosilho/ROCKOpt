@@ -1,15 +1,8 @@
-from flax import linen as nn
-
-from flax.metrics import tensorboard
 from flax.training import train_state
-import jax
-import jax.numpy as jnp
 from jax import jit
 from functools import partial
-import numpy as np
 import optax
-import tensorflow as tf
-from typing import Any, Sequence
+from typing import Any
 
 
 class OptaxOptimizer:
@@ -49,7 +42,7 @@ class OptaxOptimizer:
             print(f"Epoch: {epoch:.2f}, Loss: {metrics['loss']:.3e}, Accuracy: {metrics['accuracy']:.3f}")
 
             if i % n_batches == 0:
-                test_metrics = self.problem.test_loss_accuracy(state.params, state.batch_stats)
+                test_metrics = self.problem.test_metrics(state.params, state.batch_stats)
                 print(
                     f"Epoch: {epoch:.2f}, Test Loss: {test_metrics['loss']:.3e}, Test Accuracy: {test_metrics['accuracy']:.3f}"
                 )
