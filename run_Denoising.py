@@ -24,7 +24,7 @@ solvers_list = [
     "SGF",
     "TR",
     "STR",
-    "NF",
+    # "NF",
 ]
 
 
@@ -73,7 +73,7 @@ solvers_info.append(
             "eta": 1e-4,
             "local_problem_solver": "dog_leg",
             "method": "iterative",
-            "iter_solver_tol": 1e-4,
+            "iter_solver_tol": 1e-3,
             "iter_solver_maxiter": 100,
             "log_history": log_history,
             "record_rejected": False,
