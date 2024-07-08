@@ -1,27 +1,17 @@
-import jax
 import jax.numpy as jnp
-from flax.metrics import tensorboard
 import logging
+from flax.metrics import tensorboard
 
-from Solvers.ML import SGD, Adam, TrustRegion, StabilizedGradientFlow
-from Problems.ML import Circles
-import print_stuff
+from problems.ML import Circles
+from utils.print_stuff import print_table
+from utils.common import set_jax_options, initialize_solvers, run_solvers
 
 gpu = True
-jit = False
+jit = True
 float64 = False
 profile = False
 
-if not gpu:
-    jax.config.update('jax_platform_name', 'cpu')  # Use CPU as default device
-if float64:
-    jax.config.update("jax_enable_x64", True)  # Enable 64-bit precision but it is much slower on GPU
-# os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=12'  # Number of cores
-
-# print(f"Jax Available CPU Devices: {jax.devices("cpu")}")
-# print(f"Jax Available GPU Devices: {jax.devices("gpu")}")
-print(f"Jax Default Backend: {jax.default_backend()}")
-print(f"Jax Default Device: {jnp.ones(3).devices()}")
+set_jax_options(gpu, float64)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,50 +20,62 @@ workdir = "tensorboard_logs"
 tensorboard_writer = tensorboard.SummaryWriter(workdir)
 
 # hyperparameters
-n_epochs = 100
-n_samples = 1280  # then splittend in 75% train and 25% test
+n_epochs = 30
+n_samples = 128  # then splittend in 75% train and 25% test
 batch_size = jnp.inf  # if inf, then the whole dataset is used
 dtype = jnp.float32
 
 # Create the problem
 problem = Circles(n_samples, n_epochs, batch_size, dtype)
 
-
-# Create the optimizer
-# learning_rate = 0.1
-# optimizer = Adam(problem, tensorboard_writer, learning_rate)
-# optimizer.train()
+solvers_names = [
+    "SGD",
+    # "Adam",
+    # "TrustRegionML",
+    # "StabilizedGradientFlowML",
+    "ExactGradientFlowML",
+]
 
 history = dict()
 stats = dict()
 
-common_options = options = {"max_iter": 30, "rtol": 1e-6, "atol": 0.0}
+common_options = {
+    "max_iter": 100,
+    "min_iter": 100,
+    "rtol": 1e-3,
+    "atol": 0.0,
+    "log_history": True,
+    "tensorboard_writer": tensorboard_writer,
+}
 
 specific_options = dict()
-specific_options["TrustRegion"] = {
+specific_options["SGD"] = {"learning_rate": 0.2}
+specific_options["Adam"] = {"learning_rate": 0.2}
+specific_options["TrustRegionML"] = {
     "delta_max": 1.0,
     "eta": 1e-4,
     "loc_prob_sol": "dog_leg",
-    "method": "direct",
+    "method": "iterative",
     "iter_solver_tol": 1e-5,
     "iter_solver_maxiter": 100,
 }
-specific_options["StabilizedGradientFlow"] = {
-    "delta_max": 5.0,
+specific_options["StabilizedGradientFlowML"] = {
+    "delta_max": 0.1,
     "method": "RKC1",
-    "damping": 10.0,
-    "safe_add": 1,
-    "rho_freq": 10,
+    "damping": 0.0,
+    "safe_add": 0,
+    "rho_freq": 1e3,
     "record_stages": False,
 }
-# TR = TrustRegion(problem, tensorboard_writer, **common_options, **specific_options["TrustRegion"])
-# history[TR.description], stats[TR.description] = TR.train()
+specific_options["ExactGradientFlowML"] = {
+    "delta_max": 0.2,
+}
 
-SGF = StabilizedGradientFlow(
-    problem, tensorboard_writer, **common_options, **specific_options["StabilizedGradientFlow"]
-)
-history[SGF.description], stats[SGF.description] = SGF.train()
 
-print_stuff.print_table(stats)
+solvers = initialize_solvers(solvers_names, problem, common_options, specific_options)
+history, stats = run_solvers(solvers, jit, profile)
 
-problem.plot(history)
+print_table(stats)
+
+if common_options["log_history"]:
+    problem.plot(history)
