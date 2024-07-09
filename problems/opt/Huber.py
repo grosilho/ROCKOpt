@@ -5,8 +5,6 @@ from functools import partial
 import os
 import matplotlib.pyplot as plt
 
-from utils.print_stuff import plot_options
-
 from .Problem import Problem
 
 

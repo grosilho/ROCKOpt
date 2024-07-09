@@ -97,7 +97,7 @@ class STR(TR):
                 break
 
         self.logger.info(
-            f"Stabilized Newton direction with s={self.s} and rho={self.rho:.2f}, converged in {i} iterations."
+            f"Stabilized Newton direction with s = {self.s} and eigval = {self.rho:.2f}, converged in {i} iterations."
         )
 
         return p, g, Bv
@@ -117,12 +117,12 @@ class STR(TR):
             # rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
             self.rho, n_f_eval = self.rho_estimator.rho_linear_power_method(Bv)
 
-        # update coefficients if rho has changed
-        if self.rho != self.rho_old:
-            self.rho_old = self.rho
-            self.s = self.es.get_s(delta * self.rho)
-            if self.s != self.s_old:
-                self.s_old = self.s
-                self.es.update_coefficients(self.s)
+            # update coefficients if rho has changed
+            if self.rho != self.rho_old:
+                self.rho_old = self.rho
+                self.s = self.es.get_s(delta * self.rho)
+                if self.s != self.s_old:
+                    self.s_old = self.s
+                    self.es.update_coefficients(self.s)
 
         self.last_rho_eval_counter += 1

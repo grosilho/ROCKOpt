@@ -6,8 +6,8 @@ from problems.opt import Huber
 from utils.print_stuff import print_table
 from utils.common import set_jax_options, initialize_solvers, run_solvers
 
-gpu = False
-jit = False
+gpu = True
+jit = True
 float64 = False
 profile = False
 log_history = False
@@ -21,8 +21,8 @@ problem = Huber()
 
 # The solvers to use
 solvers_list = [
-    # "SGF",
-    # "TR",
+    "SGF",
+    "TR",
     "STR",
     # "NF",
 ]
@@ -94,14 +94,14 @@ solvers_info.append(
             "log_history": log_history,
             "record_rejected": False,
             "method": "RKC1",
-            "dt": 10.0,
-            "damping": 10.0,
-            "safe_add": 2,
+            "dt": 40.0,
+            "damping": 1.0,
+            "safe_add": 1,
             "max_steps": 100,
             "rho_freq": 100,
-            "rel_res_tol": 1e-3,
+            "rel_res_tol": 1e-2,
             "abs_tol": 1e-9,
-            "rel_tol": 1e-4,
+            "rel_tol": 1e-3,
         },
     }
 )

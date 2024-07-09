@@ -21,9 +21,9 @@ problem = Madelon()
 
 # The solvers to use
 solvers_list = [
-    # "SGF",
-    # "TR",
-    "STR",
+    "SGF",
+    "TR",
+    # "STR",
     # "NF",
 ]
 
@@ -32,7 +32,7 @@ min_algo = MinimizationAlgorithm
 min_algo_params = {
     "max_iter": 100,
     "min_iter": 10,
-    "rtol": 1e-6,
+    "rtol": 1e-3,
     "atol": 0.0,
     "log_history": log_history,
     "record_rejected": False,
@@ -49,10 +49,10 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": SGF,
         "stepper_params": {
-            "delta": 5.0,
+            "delta": 50.0,
             "rho_freq": 5,
             "method": "RKC1",
-            "damping": 1.0,
+            "damping": 0.1,
             "safe_add": 1,
             "log_history": log_history,
             "record_stages": False,
@@ -68,12 +68,12 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": TR,
         "stepper_params": {
-            "delta_max": 2.0,
-            "delta_init": 1.0,
+            "delta_max": 20.0,
+            "delta_init": 20.0,
             "eta": 1e-4,
             "local_problem_solver": "dog_leg",
             "method": "iterative",
-            "iter_solver_tol": 1e-4,
+            "iter_solver_tol": 1e-3,
             "iter_solver_maxiter": 100,
             "log_history": log_history,
             "record_rejected": False,
@@ -89,17 +89,17 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": STR,
         "stepper_params": {
-            "delta_max": 2.0,
-            "delta_init": 1.0,
+            "delta_max": 20.0,
+            "delta_init": 20.0,
             "eta": 1e-4,
             "log_history": log_history,
             "record_rejected": False,
             "method": "RKC1",
-            "dt": 2.0,
+            "dt": 0.5,
             "damping": 10.0,
             "safe_add": 2,
             "rho_freq": 1,
-            "max_steps": 100,
+            "max_steps": 10,
             "rel_res_tol": 1e-2,
             "abs_tol": 1e-9,
             "rel_tol": 1e-2,

@@ -21,8 +21,8 @@ problem = Rosenbrock(dim=3)
 
 # The solvers to use
 solvers_list = [
-    # "SGF",
-    # "TR",
+    "SGF",
+    "TR",
     "STR",
     # "NF",
 ]
@@ -33,7 +33,7 @@ min_algo = MinimizationAlgorithm
 min_algo_params = {
     "max_iter": 1e3,
     "min_iter": 1,
-    "rtol": 1e-8,
+    "rtol": 1e-4,
     "atol": 0.0,
     "log_history": log_history,
     "record_rejected": False,

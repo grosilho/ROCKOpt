@@ -14,7 +14,7 @@ class Denoising(Problem):
     def __init__(self):
 
         self.grayscale = False
-        self.max_size = 400
+        self.max_size = 600
 
         self.import_data()
         self.reformat_data()

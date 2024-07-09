@@ -6,7 +6,7 @@ from problems.opt import Denoising
 from utils.print_stuff import print_table
 from utils.common import set_jax_options, initialize_solvers, run_solvers
 
-gpu = True
+gpu = False
 jit = True
 float64 = False
 profile = False
@@ -25,15 +25,15 @@ solvers_list = [
     "TR",
     "STR",
     # "NF",
+    # "GF",
 ]
-
 
 # The method used in the outer loop. It will call the steppers
 min_algo = MinimizationAlgorithm
 min_algo_params = {
-    "max_iter": 200,
-    "min_iter": 1,
-    "rtol": 1e-3,
+    "max_iter": 1000,
+    "min_iter": 5,
+    "rtol": 1e-2,
     "atol": 0.0,
     "log_history": log_history,
     "record_rejected": False,
@@ -50,7 +50,7 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": SGF,
         "stepper_params": {
-            "delta": 5e3,
+            "delta": 1e5,
             "rho_freq": 1e4,
             "method": "RKC1",
             "damping": 1.0,
@@ -68,8 +68,8 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": TR,
         "stepper_params": {
-            "delta_max": 10.0,
-            "delta_init": 10.0,
+            "delta_max": 100.0,
+            "delta_init": 100.0,
             "eta": 1e-4,
             "local_problem_solver": "dog_leg",
             "method": "iterative",
@@ -88,20 +88,20 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": STR,
         "stepper_params": {
-            "delta_max": 10.0,
-            "delta_init": 10.0,
+            "delta_max": 100.0,
+            "delta_init": 100.0,
             "eta": 1e-4,
             "log_history": log_history,
             "record_rejected": False,
             "method": "RKC1",
-            "dt": 1e3,
+            "dt": 5e4,
             "damping": 1.0,
             "safe_add": 1,
             "max_steps": 100,
             "rho_freq": 1e4,
-            "rel_res_tol": 1e-4,
+            "rel_res_tol": 1e-2,
             "abs_tol": 1e-9,
-            "rel_tol": 1e-5,
+            "rel_tol": 1e-6,
         },
     }
 )
@@ -118,6 +118,20 @@ solvers_info.append(
             "linear_solver": "iterative",
             "iter_solver_tol": 1e-4,
             "iter_solver_maxiter": 100,
+            "log_history": log_history,
+        },
+    }
+)
+# The Gradient Flow
+solvers_info.append(
+    {
+        "name": "GF",
+        "min_algo_class": min_algo,
+        "min_algo_params": min_algo_params,
+        "stepper_class": SF,
+        "stepper_params": {
+            "delta": 2000,
+            "flow": "gradient",
             "log_history": log_history,
         },
     }

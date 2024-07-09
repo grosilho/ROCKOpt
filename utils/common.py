@@ -34,11 +34,11 @@ def initialize_solvers(problem, solvers_info, solvers_list):
         stepper_class = solver_info["stepper_class"]
         stepper_params = solver_info["stepper_params"]
         solvers[name] = min_algo_class(problem, min_algo_params, stepper_class, stepper_params)
-        solvers[name].logger.setLevel(logging.ERROR)
-        solvers[name].set({"log_history": False, "max_iter": 1})
+        logging.getLogger().setLevel(logging.ERROR)
+        solvers[name].set({"log_history": False, "max_iter": 1, "min_iter": 1})
         solvers[name].solve()
-        solvers[name].revert(["log_history", "max_iter"])
-        solvers[name].logger.setLevel(log_level)
+        solvers[name].revert(["log_history", "max_iter", "min_iter"])
+        logging.getLogger().setLevel(log_level)
 
     return solvers
 
