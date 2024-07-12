@@ -1,6 +1,10 @@
+from collections import namedtuple
 import jax
 import jax.numpy as jnp
 import logging
+
+# mixed precision dtype
+MP_dtype = namedtuple("MP_dtype", ["high", "low"])
 
 
 def set_jax_options(gpu, float64):
@@ -16,7 +20,7 @@ def set_jax_options(gpu, float64):
     print(f"Jax Default Device: {jnp.ones(3).devices()}")
 
 
-def initialize_solvers(problem, solvers_info, solvers_list):
+def initialize_solvers(problem, solvers_info, solvers_list, jit):
     """
     Initialize the solvers and perform one iteration.
     We perform one iteration and discrad the results just to compile the code.
@@ -34,11 +38,12 @@ def initialize_solvers(problem, solvers_info, solvers_list):
         stepper_class = solver_info["stepper_class"]
         stepper_params = solver_info["stepper_params"]
         solvers[name] = min_algo_class(problem, min_algo_params, stepper_class, stepper_params)
-        logging.getLogger().setLevel(logging.ERROR)
-        solvers[name].set({"log_history": False, "max_iter": 1, "min_iter": 1})
-        solvers[name].solve()
-        solvers[name].revert(["log_history", "max_iter", "min_iter"])
-        logging.getLogger().setLevel(log_level)
+        if jit:
+            logging.getLogger().setLevel(logging.ERROR)
+            solvers[name].set({"max_iter": 1, "min_iter": 1})
+            solvers[name].solve()
+            solvers[name].revert(["max_iter", "min_iter"])
+            logging.getLogger().setLevel(log_level)
 
     return solvers
 

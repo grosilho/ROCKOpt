@@ -1,7 +1,7 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, lax
 from functools import partial
 import os
 import matplotlib.pyplot as plt
@@ -15,9 +15,7 @@ class Denoising(Problem):
 
         self.grayscale = False
         self.max_size = 600
-
         self.import_data()
-        self.reformat_data()
 
         self.lmbda = 0.5
         self.eps = 1e-4
@@ -44,17 +42,21 @@ class Denoising(Problem):
         self.img_noised = Image.fromarray(np.asarray(self.arr_noised))
         self.img_noised.save(path.replace('.jpg', '_thumbnail_noised.jpg'))
 
-    def reformat_data(self):
+    def reformat_data(self, mp_dtype):
         self.shape = self.arr_clean.shape
         self.size = self.arr_clean.size
 
-        def reformat(a):
-            a = a.astype(jnp.float32)
-            a = a / 255.0
-            return a.ravel()
+        def reformat(a, dtype):
+            return lax.convert_element_type(a / 255.0, dtype).ravel()
 
-        self.arr_clean = reformat(self.arr_clean)
-        self.arr_noised = reformat(self.arr_noised)
+        self.mp_arr_clean = dict()
+        self.mp_arr_noised = dict()
+        self.mp_arr_clean[mp_dtype.high.dtype] = reformat(self.arr_clean, mp_dtype.high.dtype)
+        self.mp_arr_noised[mp_dtype.high.dtype] = reformat(self.arr_noised, mp_dtype.high.dtype)
+
+        if mp_dtype.low is not None:
+            self.mp_arr_clean[mp_dtype.low.dtype] = reformat(self.arr_clean, mp_dtype.low.dtype)
+            self.mp_arr_noised[mp_dtype.low.dtype] = reformat(self.arr_noised, mp_dtype.low.dtype)
 
     @partial(jit, static_argnums=(0,))
     def f(self, x):
@@ -62,7 +64,7 @@ class Denoising(Problem):
 
     @partial(jit, static_argnums=(0,))
     def loss(self, x):
-        return 0.5 * jnp.dot(self.arr_noised - x, self.arr_noised - x) / self.size
+        return 0.5 * jnp.dot(self.mp_arr_noised[x.dtype] - x, self.mp_arr_noised[x.dtype] - x) / self.size
 
     @partial(jit, static_argnums=(0,))
     def penalization(self, x):
@@ -85,8 +87,9 @@ class Denoising(Problem):
         grad2 = jnp.pad(grad2, pad, mode='edge')
         return grad1, grad2
 
-    def initial_guess(self):
-        return self.arr_noised
+    def initial_guess(self, mp_dtype):
+        self.reformat_data(mp_dtype)
+        return self.mp_arr_noised[mp_dtype.high.dtype]
 
     def get_metrics_keys(self):
         return ["x"]

@@ -7,16 +7,16 @@ from .Problem import Problem
 
 
 class Rosenbrock(Problem):
-    def __init__(self, dim=2):
+    def __init__(self, dim):
         self.dim = dim
         assert self.dim == 2 or self.dim == 3, "Rosenbrock only supports 2 or 3 dimensions"
         super().__init__('Rosenbrock')
 
-    def initial_guess(self):
+    def initial_guess(self, dtype):
         if self.dim == 2:
-            return jnp.array([-1.0, -1.0])
+            return jnp.array([-1.0, -1.0], dtype=dtype.high)
         elif self.dim == 3:
-            return jnp.array([-1.0, -1.0, -1.0])
+            return jnp.array([-1.0, -1.0, -1.0], dtype=dtype.high)
 
     @partial(jit, static_argnums=(0,))
     def f(self, x):

@@ -22,5 +22,17 @@ def print_table(stats):
 def key_to_tex(key):
     if key == "fx":
         return r"$f(x)$"
+    elif key == "train_loss":
+        return r"Train Loss"
+    elif key == "train_accuracy":
+        return r"Train Accuracy"
+    elif key == "test_loss":
+        return r"Test Loss"
+    elif key == "test_accuracy":
+        return r"Test Accuracy"
+    elif key == "batch_loss":
+        return r"Batch Loss"
+    elif key == "batch_accuracy":
+        return r"Batch Accuracy"
     else:
         return key

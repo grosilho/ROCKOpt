@@ -1,3 +1,5 @@
+import jax
+import jax.numpy as jnp
 import numpy as np
 import os
 
@@ -53,10 +55,15 @@ class RKW1:
 
 
 class RKC1:
-    def __init__(self, damping, safe_add):
-        self.damping = damping
+    def __init__(self, damping, safe_add, dtype=None):
         self.even_s = False
         self.safe_add = safe_add
+        if dtype is None:
+            self.dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+        else:
+            self.dtype = dtype
+
+        self.damping = self.dtype(damping)
 
     def update_coefficients(self, s):
         c = [0] * (s + 1)
@@ -64,10 +71,10 @@ class RKC1:
         dc = np.polynomial.chebyshev.chebder(c)
 
         w0 = 1 + self.damping / s**2
-        w1 = np.polynomial.chebyshev.chebval(w0, c) / np.polynomial.chebyshev.chebval(w0, dc)
+        w1 = self.dtype(np.polynomial.chebyshev.chebval(w0, c) / np.polynomial.chebyshev.chebval(w0, dc))
 
         # evaluate Chebyshev polynomials T_0(w0),...,T_s(w0)
-        T = np.zeros(s + 1, dtype=np.float64)
+        T = np.zeros(s + 1, dtype=self.dtype)
         T[0] = 1.0
         T[1] = w0
         for i in range(2, s + 1):
@@ -75,9 +82,9 @@ class RKC1:
 
         b = 1.0 / T
 
-        mu = np.zeros(s, dtype=np.float64)
-        nu = np.zeros(s, dtype=np.float64)
-        kappa = np.zeros(s, dtype=np.float64)
+        mu = np.zeros(s, dtype=self.dtype)
+        nu = np.zeros(s, dtype=self.dtype)
+        kappa = np.zeros(s, dtype=self.dtype)
         mu[0] = w1 * b[1]
         mu[1:] = 2.0 * w1 * b[2:] / b[1:-1]
         nu[1:] = 2.0 * w0 * b[2:] / b[1:-1]
@@ -85,7 +92,7 @@ class RKC1:
         nu[0] = s * mu[0] / 2.0
         kappa[0] = s * mu[0]
 
-        c = np.zeros(s + 1, dtype=np.float64)
+        c = np.zeros(s + 1, dtype=self.dtype)
         c[0] = 0.0
         c[1] = mu[0]
         for i in range(2, s + 1):
@@ -100,6 +107,7 @@ class RKC1:
         self.nu = nu
         self.kappa = kappa
         self.c = c
+        pass
 
     def get_s(self, z):
         # if z<1.5:
@@ -141,10 +149,14 @@ class RKC1:
 
 
 class RKU1:
-    def __init__(self, damping, safe_add):
-        self.damping = damping
+    def __init__(self, damping, safe_add, dtype=None):
         self.even_s = False
         self.safe_add = safe_add
+        if dtype is None:
+            self.dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+        else:
+            self.dtype = dtype
+        self.damping = self.dtype(damping)
 
     def update_coefficients(self, s):
         c = [0] * (s + 2)
@@ -152,11 +164,11 @@ class RKU1:
         c = np.polynomial.chebyshev.chebder(c)
         dc = np.polynomial.chebyshev.chebder(c)
 
-        w0 = 1.0 + 3.0 * self.damping / (s * (s + 1.0) * (s + 2.0))
-        w1 = np.polynomial.chebyshev.chebval(w0, c) / np.polynomial.chebyshev.chebval(w0, dc)
+        w0 = self.dtype(1.0 + 3.0 * self.damping / (s * (s + 1.0) * (s + 2.0)))
+        w1 = self.dtype(np.polynomial.chebyshev.chebval(w0, c) / np.polynomial.chebyshev.chebval(w0, dc))
 
         # evaluate Chebyshev polynomials U_0(w0),...,U_s(w0)
-        U = np.zeros(s + 1, dtype=np.float64)
+        U = np.zeros(s + 1, dtype=self.dtype)
         U[0] = 1.0
         U[1] = 2.0 * w0
         for i in range(2, s + 1):
@@ -164,9 +176,9 @@ class RKU1:
 
         b = 1.0 / U
 
-        mu = np.zeros(s, dtype=np.float64)
-        nu = np.zeros(s, dtype=np.float64)
-        kappa = np.zeros(s, dtype=np.float64)
+        mu = np.zeros(s, dtype=self.dtype)
+        nu = np.zeros(s, dtype=self.dtype)
+        kappa = np.zeros(s, dtype=self.dtype)
         mu[0] = w1 / w0
         mu[1:] = 2.0 * w1 * b[2:] / b[1:-1]
         nu[1:] = 2.0 * w0 * b[2:] / b[1:-1]
@@ -174,7 +186,7 @@ class RKU1:
         nu[0] = s * mu[0] / 2.0
         kappa[0] = s * mu[0]
 
-        c = np.zeros(s + 1, dtype=np.float64)
+        c = np.zeros(s + 1, dtype=self.dtype)
         c[0] = 0.0
         c[1] = mu[0]
         for i in range(2, s + 1):
@@ -217,10 +229,10 @@ class RKU1:
 
 
 class HSRKU1:
-    def __init__(self, damping, safe_add):
+    def __init__(self, damping, safe_add, dtype=None):
         self.damping = damping
         self.even_s = True
-        self.rku = RKU1(damping, 0)
+        self.rku = RKU1(damping, 0, dtype)
         self.safe_add = safe_add + safe_add % 2
 
     def update_coefficients(self, s):

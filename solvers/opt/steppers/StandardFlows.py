@@ -1,9 +1,15 @@
 import jax
 import jax.numpy as jnp
+
+from utils.common import MP_dtype
 from utils.HelperClass import HelperClass
 
 
 class SF(HelperClass):
+
+    default_high_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+    default_low_dtype = None
+
     def __init__(self, problem, params):
         default_params = {
             "delta": 0.1,
@@ -12,6 +18,7 @@ class SF(HelperClass):
             "iter_solver_tol": 1e-5,
             "iter_solver_maxiter": 100,
             "log_history": False,
+            "dtype": MP_dtype(self.default_high_dtype, self.default_low_dtype),
         }
         super().__init__(default_params, params)
 

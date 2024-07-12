@@ -5,12 +5,25 @@ import time
 import scipy.sparse.linalg
 
 
+class jax_wrapped:
+    key = jax.random.key
+    dot = jnp.dot
+    norm = jnp.linalg.norm
+
+    def normal_like(key, x):
+        return jax.random.normal(key=key, shape=x.shape, dtype=x.dtype)
+
+    def max_abs(x):
+        return jnp.max(jnp.abs(x))
+
+
 class rho_estimator:
-    def __init__(self, n):
+    def __init__(self, x, vector_module=jax_wrapped):
         self.logger = logging.getLogger("rho_estimator")
 
-        key = jax.random.key(1989)
-        self.eigvec = jax.random.normal(key, shape=(n,))
+        self.vector_module = vector_module
+        key = vector_module.key(1989)
+        self.eigvec = vector_module.normal_like(key, x)
         self.eigval = 0.0
 
     def rho_linear_scipy(self, A):
@@ -48,16 +61,20 @@ class rho_estimator:
         maxiter = 100
         tol = 1e-4
         n_f_eval = 0
+        vector_module = self.vector_module
 
         eigval_old = self.eigval
         eigvec_old = self.eigvec
+        Aeigvec_old = A(eigvec_old)
 
         # Start the power method for linear operator A
         for iter in range(1, maxiter + 1):
 
-            eigvec = A(eigvec_old)
-            eigvec /= jnp.linalg.norm(eigvec)
-            eigval = jnp.dot(eigvec, A(eigvec))  # Rayleigh quotient
+            eigvec = Aeigvec_old
+            eigvec /= vector_module.max_abs(eigvec)
+            eigvec /= vector_module.norm(eigvec)
+            Aeigvec = A(eigvec)
+            eigval = vector_module.dot(eigvec, Aeigvec)  # Rayleigh quotient
 
             n_f_eval += 1
 
@@ -68,6 +85,7 @@ class rho_estimator:
 
             eigval_old = eigval
             eigvec_old = eigvec
+            Aeigvec_old = Aeigvec
 
         if iter == maxiter and abs(eigval - eigval_old) > eigval * tol:
             self.logger.warning("Spectral radius estimator did not converge.")
@@ -97,12 +115,15 @@ class rho_estimator:
         fy: f(y) (optional). fy can be None or an already available evaluation of f(y)
         """
 
+        et = time.time()
+
         maxiter = 100
         safe = 1.05
         tol = 1e-4
         small = 1e-6
         n_f_eval = 0
         tol_norm = 1e-6
+        vector_module = self.vector_module
 
         if fy is None:
             fy = f(y)
@@ -110,8 +131,8 @@ class rho_estimator:
 
         eigval = self.eigval
         z = self.eigvec
-        y_norm = jnp.linalg.norm(y) / jnp.sqrt(len(y))
-        z_norm = jnp.linalg.norm(z) / jnp.sqrt(len(z))
+        y_norm = vector_module.norm(y) / jnp.sqrt(y.size)
+        z_norm = vector_module.norm(z) / jnp.sqrt(z.size)
 
         # Building the vector z so that the difference z-yn is small
         if y_norm > tol_norm and z_norm > tol_norm:
@@ -153,7 +174,7 @@ class rho_estimator:
             eigvec -= fy
             n_f_eval += 1
 
-            dfzfy = jnp.linalg.norm(eigvec)
+            dfzfy = vector_module.norm(eigvec)
 
             eigval_very_old = eigval_old
             eigval_old = eigval
@@ -190,7 +211,9 @@ class rho_estimator:
         if iter == maxiter and abs(eigval - eigval_old) > eigval * tol:
             self.logger.warning("Spectral radius estimator did not converge.")
 
-        self.logger.info(f"Estimated rho = {eigval:1.2e} in {iter} iterations.")
+        et = time.time() - et
+
+        self.logger.info(f"Estimated rho = {eigval:1.2e} in {iter} iterations and {et:1.2e} seconds.")
 
         self.eigvec = eigvec
         self.eigval = eigval

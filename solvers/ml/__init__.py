@@ -1,4 +1,3 @@
-from .Optax import SGD, Adam
-from .TrustRegionML import TrustRegionML
-from .StabilizedGradientFlowML import StabilizedGradientFlowML
-from .ExactGradientFlowML import ExactGradientFlowML
+from .Optimizer import Optimizer
+
+__all__ = ["Optimizer"]

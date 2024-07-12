@@ -55,9 +55,9 @@ class Huber(Problem):
     def huber(self, x):
         return jnp.where(jnp.abs(x) <= self.delta, 0.5 * x**2, self.delta * (jnp.abs(x) - 0.5 * self.delta))
 
-    def initial_guess(self):
+    def initial_guess(self, mp_dtype):
         key = jax.random.key(2000)
-        return jax.random.normal(key, (self.A.shape[1],))
+        return jax.random.normal(key, (self.A.shape[1],), dtype=mp_dtype.high)
 
     def plot(self, histories):
 

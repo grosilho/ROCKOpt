@@ -13,9 +13,10 @@ tf.config.experimental.set_visible_devices([], 'GPU')
 
 
 class Circles(Problem):
-    def __init__(self, n_samples, n_epochs, batch_size, dtype=jnp.float32):
+    def __init__(self, n_train_samples, n_epochs, batch_size, dtype=jnp.float32):
 
-        self.n_samples = int(n_samples)
+        self.n_train_samples = int(n_train_samples)
+        self.n_test_samples = int(0.25 * n_train_samples)
         super().__init__(n_epochs, batch_size, dtype)
 
     def define_model(self):
@@ -25,7 +26,7 @@ class Circles(Problem):
     def dataset_generator(self, seed):
         R = [[1.0, 2.0], [3.0, 4.0]]
         key = jax.random.PRNGKey(seed)
-        for _ in range(self.n_samples):
+        for _ in range(self.n_train_samples + self.n_test_samples):
             key, *subkey = jax.random.split(key, 4)
             label = jax.random.randint(subkey[0], shape=(), minval=0, maxval=2).astype(jnp.int32)
             r = jax.random.uniform(subkey[1], shape=(), minval=R[label][0], maxval=R[label][1], dtype=self.dtype)
@@ -42,9 +43,11 @@ class Circles(Problem):
                 'labels': tf.TensorSpec(shape=(), dtype=tf.int32),
             },
         )
-        self.train_ds, self.test_ds = tf.keras.utils.split_dataset(ds, left_size=0.75, shuffle=True, seed=1989)
-        self.n_train_samples = int(self.train_ds.cardinality())
-        self.n_test_samples = int(self.test_ds.cardinality())
+        self.train_ds, self.test_ds = tf.keras.utils.split_dataset(
+            ds, left_size=self.n_train_samples, shuffle=True, seed=1989
+        )
+        assert int(self.train_ds.cardinality()) == self.n_train_samples, "Error in the number of training samples."
+        assert int(self.test_ds.cardinality()) == self.n_test_samples, "Error in the number of testing samples."
 
     @partial(jit, static_argnums=(0))
     def loss_el_wise(self, results, labels):

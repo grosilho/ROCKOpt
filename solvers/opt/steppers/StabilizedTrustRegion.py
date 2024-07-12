@@ -1,4 +1,9 @@
+from jax import jit
 import jax.numpy as jnp
+from functools import partial
+
+from utils.common import MP_dtype
+
 from solvers.opt.stabilized_utils.rho_estimator import rho_estimator
 from solvers.opt.stabilized_utils.es_methods import RKW1, RKC1, RKU1
 from solvers.opt.steppers.TrustRegion import TR
@@ -13,6 +18,7 @@ class STR(TR):
             "eta": 1e-4,
             "log_history": False,
             "record_rejected": False,
+            "dtype": MP_dtype(self.default_high_dtype, self.default_low_dtype),
             "method": "RKC1",
             "dt": 1.0,
             "damping": 1.0,
@@ -53,7 +59,7 @@ class STR(TR):
         self.last_rho_eval_counter = 0
         self.rho_old = 0.0
         self.s_old = 0
-        self.rho_estimator = rho_estimator(x.size)
+        self.rho_estimator = rho_estimator(x)
 
     def newton_direction(self, p, x):
         """
@@ -107,9 +113,14 @@ class STR(TR):
         dj = self.es.mu[0] * dt * f(p)
         for j in range(2, s + 1):
             djm2, djm1, dj = djm1, dj, djm2
-            dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * dt * f(p + djm1)
+            dj = self.body(self.es.nu[j - 1], self.es.kappa[j - 1], self.es.mu[j - 1], dt, djm1, djm2, f(p + djm1))
+            # dj = self.es.nu[j - 1] * djm1 + self.es.kappa[j - 1] * djm2 + self.es.mu[j - 1] * dt * f(p + djm1)
         p += dj
         return p
+
+    @partial(jit, static_argnums=(0,))
+    def body(self, nu, kappa, mu, delta, djm1, djm2, df):
+        return nu * djm1 + kappa * djm2 + mu * delta * df
 
     def update_rho_and_stages(self, Bv, delta):
         # re-estimate rho every rho_freq iterations

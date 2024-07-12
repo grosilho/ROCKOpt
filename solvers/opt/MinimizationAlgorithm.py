@@ -39,9 +39,11 @@ class MinimizationAlgorithm(HelperClass):
         self.init_stats(self.stats_keys)
         self.init_history(self.history_keys + self.problem.get_metrics_keys())
 
-        x = self.problem.initial_guess()
+        x = self.problem.initial_guess(self.stepper.dtype)
         fx = self.problem.f(x)
         self.stats["f_evals"] += 1
+
+        self.log(fx, "")
 
         if self.log_history:
             self.append_to_history(fx=fx, **self.problem.get_metrics(x))
