@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from jax import jit
+from jax.flatten_util import ravel_pytree
 from functools import partial
 import numpy as np
 import optax
@@ -13,15 +14,18 @@ tf.config.experimental.set_visible_devices([], 'GPU')
 
 
 class Circles(Problem):
-    def __init__(self, n_train_samples, n_epochs, batch_size, dtype=jnp.float32):
+    def __init__(self, n_train_samples, n_epochs, batch_size):
 
         self.n_train_samples = int(n_train_samples)
         self.n_test_samples = int(0.25 * n_train_samples)
-        super().__init__(n_epochs, batch_size, dtype)
+        super().__init__(n_epochs, batch_size)
 
-    def define_model(self):
+    def define_model(self, mp_dtype):
         self.features = [5, 5, 2]
-        self.model = ExplicitMLP(features=self.features, dtype=self.dtype)
+        self.model = dict()
+        self.model[mp_dtype.high.dtype] = ExplicitMLP(features=self.features, dtype=mp_dtype.high.dtype)
+        if mp_dtype.low is not None:
+            self.model[mp_dtype.low.dtype] = ExplicitMLP(features=self.features, dtype=mp_dtype.low.dtype)
 
     def dataset_generator(self, seed):
         R = [[1.0, 2.0], [3.0, 4.0]]
@@ -29,9 +33,9 @@ class Circles(Problem):
         for _ in range(self.n_train_samples + self.n_test_samples):
             key, *subkey = jax.random.split(key, 4)
             label = jax.random.randint(subkey[0], shape=(), minval=0, maxval=2).astype(jnp.int32)
-            r = jax.random.uniform(subkey[1], shape=(), minval=R[label][0], maxval=R[label][1], dtype=self.dtype)
-            angle = jax.random.uniform(subkey[2], shape=(), minval=0.0, maxval=2 * np.pi, dtype=self.dtype)
-            point = jnp.array([r * np.cos(angle), r * np.sin(angle)], dtype=self.dtype)
+            r = jax.random.uniform(subkey[1], shape=(), minval=R[label][0], maxval=R[label][1], dtype=jnp.float32)
+            angle = jax.random.uniform(subkey[2], shape=(), minval=0.0, maxval=2 * np.pi, dtype=jnp.float32)
+            point = jnp.array([r * np.cos(angle), r * np.sin(angle)], dtype=jnp.float32)
             yield dict(inputs=point, labels=label)
 
     def get_datasets(self, seed_datasets):
@@ -48,6 +52,14 @@ class Circles(Problem):
         )
         assert int(self.train_ds.cardinality()) == self.n_train_samples, "Error in the number of training samples."
         assert int(self.test_ds.cardinality()) == self.n_test_samples, "Error in the number of testing samples."
+
+    def init_model(self, mp_dtype):
+        self.define_model(mp_dtype)
+        key = jax.random.PRNGKey(self.seed_model_init)
+        variables = self.model[mp_dtype.high.dtype].init(key, jnp.ones(shape=(2,), dtype=mp_dtype.high.dtype))
+        self.params = variables['params']
+        self.batch_stats = variables['batch_stats']
+        self.flatened_params, self.deflat_params = ravel_pytree(self.params)
 
     @partial(jit, static_argnums=(0))
     def loss_el_wise(self, results, labels):

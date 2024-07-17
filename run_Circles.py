@@ -1,24 +1,24 @@
-import jax.numpy as jnp
 import logging
-
+import jax
+import jax.numpy as jnp
 import optax
-from solvers.ml import Optimizer
 
-from solvers.ml.steppers import OptaxOptimizer, GD, SGF
+from solvers.ml import Optimizer
+from solvers.ml.steppers import OptaxOptimizer, GD, SGF, MPSGF
 from problems.ml import Circles
 from utils.print_stuff import print_table
-from utils.common import set_jax_options, initialize_solvers, run_solvers
+from utils.common import set_jax_options, initialize_solvers, run_solvers, MP_dtype
 
 gpu = True
 jit = True
 float64 = False
 profile = False
 log_history = True
+highest_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
 
 set_jax_options(gpu, float64)
 
 logging.basicConfig(level=logging.INFO)
-
 
 # hyperparameters
 n_epochs = 20
@@ -27,22 +27,23 @@ batch_size = 250  # if jnp.inf or >n_samples, then it is set to n_samples and th
 dtype = jnp.float32
 
 # Create the problem
-problemML = Circles(n_samples, n_epochs, batch_size, dtype)
+problemML = Circles(n_samples, n_epochs, batch_size)
 
 solvers_list = [
     # "SGD",
     # "Adam",
-    "GD",
+    # "GD",
     "SGF",
+    "MPSGF",
 ]
 
 # The method used in the outer loop. It will call the steppers
 optim = Optimizer
 optim_params = {
     "max_iter": jnp.inf,
-    "min_iter": 1,
-    "rtol": 1e-3,
-    "atol": 1e-3,
+    "min_iter": 50,
+    "rtol": 1e-4,
+    "atol": 1e-4,
     "log_history": log_history,
     "record_rejected": False,
 }
@@ -60,6 +61,7 @@ solvers_info.append(
         "stepper_params": {
             "optax_optimizer_class": optax.sgd,
             "optax_optimizer_params": {"learning_rate": 2e-1},
+            "dtype": MP_dtype(highest_dtype, None),
         },
     }
 )
@@ -79,6 +81,7 @@ solvers_info.append(
                 "eps": 1e-8,
                 "eps_root": 1e-8,
             },
+            "dtype": MP_dtype(highest_dtype, None),
         },
     }
 )
@@ -90,6 +93,7 @@ solvers_info.append(
         "min_algo_params": optim_params,
         "stepper_class": GD,
         "stepper_params": {"learning_rate": 10.0},
+        "dtype": MP_dtype(highest_dtype, None),
     }
 )
 # The SGF method, which is a stabilized method to solve the gradient flow ODE
@@ -109,6 +113,28 @@ solvers_info.append(
             "log_history": True,
             "record_stages": False,
             "record_rejected": False,
+            "dtype": MP_dtype(highest_dtype, None),
+        },
+    }
+)
+# The mixed precision SGF method
+solvers_info.append(
+    {
+        "name": "MPSGF",
+        "min_algo_class": optim,
+        "min_algo_params": optim_params,
+        "stepper_class": MPSGF,
+        "stepper_params": {
+            "delta": 10.0,
+            "rho_freq": 5 * n_samples // batch_size,
+            "method": "RKC1",
+            "damping": 0.05,
+            "safe_add": 0,
+            "fixed_s": 5,
+            "log_history": True,
+            "record_stages": False,
+            "record_rejected": False,
+            "dtype": MP_dtype(highest_dtype, jnp.float16),
         },
     }
 )

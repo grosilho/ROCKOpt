@@ -33,11 +33,11 @@ class Optimizer(HelperClass):
         self.init_stats(self.stats_keys)
         self.init_history(self.history_keys + self.problemML.get_metrics_keys())
 
-        params, batch_stats = self.problemML.init_params_batch_stats()
+        params, batch_stats = self.problemML.init_params_batch_stats(self.stepper.dtype)
         self.loss = jnp.inf
 
         if self.log_history:
-            self.append_to_history(**self.problemML.get_train_test_metrics())
+            self.append_to_history(**self.problemML.get_train_test_metrics(self.stepper.dtype.high.dtype))
 
         return params, batch_stats
 
@@ -52,7 +52,7 @@ class Optimizer(HelperClass):
 
             metrics, accepted, stepper_log_str = self.stepper.step(self.problemML)
 
-            loss_diff = metrics['batch_loss'] - self.loss
+            loss_diff = self.loss - metrics['batch_loss']
             self.loss = metrics['batch_loss']
 
             self.stats["iter"] += 1
@@ -64,7 +64,7 @@ class Optimizer(HelperClass):
                 self.append_to_history(accepted=accepted, **metrics)
 
             if self.stats["iter"] % self.problemML.n_batches == 0:
-                metrics = self.problemML.get_train_test_metrics()
+                metrics = self.problemML.get_train_test_metrics(self.stepper.dtype.high.dtype)
                 self.log(epoch=epoch, stepper_log_str="", **metrics)
                 if self.log_history and (accepted or self.record_rejected):
                     self.append_to_history(**metrics)

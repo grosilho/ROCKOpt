@@ -24,7 +24,15 @@ class SGF(HelperClass):
         self.description = "SGF"
         self.problem = problem
 
-        self.es = self.init_es(self.method, self.damping, self.safe_add)
+        method_mapping = {
+            "RKC1": RKC1,
+            "RKW1": RKW1,
+            "RKU1": RKU1,
+        }
+
+        assert self.method in method_mapping, f"Stabilized method {self.method} not implemented."
+
+        self.es = method_mapping[self.method](damping=self.damping, safe_add=self.safe_add, dtype=self.dtype.high)
 
         self.stats_keys = [
             "f_evals",
@@ -48,17 +56,6 @@ class SGF(HelperClass):
             "record_rejected": False,
             "dtype": MP_dtype(self.default_high_dtype, self.default_low_dtype),
         }
-
-    def init_es(self, method, damping, safe_add):
-        method_mapping = {
-            "RKC1": RKC1,
-            "RKW1": RKW1,
-            "RKU1": RKU1,
-        }
-
-        assert method in method_mapping, f"Stabilized method {method} not implemented."
-
-        return method_mapping[method](damping=damping, safe_add=safe_add, dtype=self.dtype.high)
 
     def pre_loop(self, x, fx):
         self.init_stats(self.stats_keys)

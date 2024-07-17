@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-from jax.flatten_util import ravel_pytree
 from jax import jit
 from functools import partial
 import tensorflow as tf
@@ -14,10 +13,9 @@ plt.rc("text", usetex=True)
 
 
 class Problem:
-    def __init__(self, n_epochs, batch_size, dtype=jnp.float32):
+    def __init__(self, n_epochs, batch_size):
         self.n_epochs = int(n_epochs)
         self.batch_size = batch_size
-        self.dtype = dtype
 
         self.seed_datasets = 1989
         self.seed_iterator = 1999
@@ -26,15 +24,6 @@ class Problem:
         self.get_datasets(self.seed_datasets)
         self.batch_size = int(min(self.batch_size, self.n_train_samples))
         self.n_batches = self.n_train_samples // self.batch_size
-
-        self.define_model()
-
-    def init_model(self):
-        key = jax.random.PRNGKey(self.seed_model_init)
-        variables = self.model.init(key, jnp.ones(shape=(2,)))
-        self.params = variables['params']
-        self.batch_stats = variables['batch_stats']
-        self.flatened_params, self.deflat_params = ravel_pytree(self.params)
 
     def init_iterator(self):
         self.train_ds_iterator = (
@@ -45,8 +34,8 @@ class Problem:
             .as_numpy_iterator()
         )
 
-    def init_params_batch_stats(self):
-        self.init_model()
+    def init_params_batch_stats(self, mp_dtype):
+        self.init_model(mp_dtype)
         return self.params, self.batch_stats
 
     def get_model(self):
@@ -61,75 +50,96 @@ class Problem:
         else:
             return True
 
-    @partial(jit, static_argnums=(0,))
-    def loss_accuracy_batch_stats(self, params, batch_stats, inputs, labels):
-        results, updates = self.model.apply(
+    @partial(jit, static_argnums=(0, 5))
+    def _loss_accuracy_batch_stats(self, params, batch_stats, inputs, labels, dtype):
+        results, updates = self.model[dtype].apply(
             {'params': params, 'batch_stats': batch_stats},
             x=inputs,
             train=True,
             mutable=['batch_stats'],
         )
-        loss = self.loss(results, labels, True)
-        accuracy = self.accuracy(results, labels, True)
+        loss = self.loss_from_model_results(results, labels, True)
+        accuracy = self.accuracy_from_model_results(results, labels, True)
         return loss, (accuracy, updates["batch_stats"])
 
-    @partial(jit, static_argnums=(0,))
-    def grad_fn(self, params, batch_stats, inputs, labels):
-        grad_fn = jax.value_and_grad(self.loss_accuracy_batch_stats, argnums=0, has_aux=True)
-        (loss, (accuracy, batch_stats)), grads = grad_fn(params, batch_stats, inputs, labels)
-        return loss, accuracy, batch_stats, grads
+    @partial(jit, static_argnums=(0, 5))
+    def _grads_loss_accuracy_batch_stats(self, params, batch_stats, inputs, labels, dtype):
+        grad_fn = jax.value_and_grad(self._loss_accuracy_batch_stats, argnums=0, has_aux=True)
+        (loss, (accuracy, batch_stats)), grads = grad_fn(params, batch_stats, inputs, labels, dtype)
+        return grads, (loss, accuracy, batch_stats)
+
+    @partial(jit, static_argnums=(0, 6))
+    def _hvp_grads_loss_accuracy_batch_stats(self, params, batch_stats, inputs, labels, v, dtype):
+        # Compute the Hessian-vector product, with hessian with respect to params
+        def grads(params_):
+            grad, (loss, accuracy, batch_stats_new) = self._grads_loss_accuracy_batch_stats(
+                params_, batch_stats, inputs, labels, dtype
+            )
+            return grad, (loss, accuracy, batch_stats_new)
+
+        (grad, hvp, (loss, accuracy, batch_stats)) = jax.jvp(grads, (params,), (v,), has_aux=True)
+        return hvp, (grad, loss, accuracy, batch_stats)
+
+    def loss_accuracy_batch_stats(self, dtype):
+        return self._loss_accuracy_batch_stats(
+            self.params, self.batch_stats, self.batch['inputs'], self.batch['labels'], dtype
+        )
+
+    def grads_loss_accuracy_batch_stats(self, dtype):
+        return self._grads_loss_accuracy_batch_stats(
+            self.params, self.batch_stats, self.batch['inputs'], self.batch['labels'], dtype
+        )
+
+    def hvp_grads_loss_accuracy_batch_stats(self, v, dtype):
+        return self._hvp_grads_loss_accuracy_batch_stats(
+            self.params, self.batch_stats, self.batch['inputs'], self.batch['labels'], v, dtype
+        )
 
     @partial(jit, static_argnums=(0,))
-    def model_loss(self, params, batch_stats, inputs, labels):
+    def _f(self, params, batch_stats, inputs, labels):
         results, updates = self.model.apply(
             {'params': params, 'batch_stats': batch_stats},
             x=inputs,
             train=True,
             mutable=['batch_stats'],
         )
-        loss = self.loss(results, labels, True)
+        loss = self.loss_from_model_results(results, labels, True)
         return loss
 
     @partial(jit, static_argnums=(0,))
-    def grad_model_loss(self, params, batch_stats, inputs, labels):
-        grad = jax.grad(self.model_loss, argnums=0, has_aux=False)
+    def _df(self, params, batch_stats, inputs, labels):
+        grad = jax.grad(self._f, argnums=0, has_aux=False)
         grads = grad(params, batch_stats, inputs, labels)
         return grads
 
     @partial(jit, static_argnums=(0,))
-    def hvp_model_loss(self, params, batch_stats, inputs, labels, v):
+    def _ddfv(self, params, batch_stats, inputs, labels, v):
         # Compute the Hessian-vector product, with hessian with respect to params
-        def grads(params):
-            return self.grad_model_loss(params, batch_stats, inputs, labels)
+        def df(params):
+            return self._df(params, batch_stats, inputs, labels)
 
-        df, ddfv = jax.jvp(grads, (params,), (v,))
+        _, ddfv = jax.jvp(df, (params,), (v,))
         return ddfv
 
     def df(self, params):
-        return self.grad_model_loss(params, self.batch_stats, self.batch['inputs'], self.batch['labels'])
+        return self._df(params, self.batch_stats, self.batch['inputs'], self.batch['labels'])
 
     def ddfv(self, params, v):
-        return self.hvp_model_loss(params, self.batch_stats, self.batch['inputs'], self.batch['labels'], v)
+        return self._ddfv(params, self.batch_stats, self.batch['inputs'], self.batch['labels'], v)
 
-    def loss_accuracy_batch_stats_grads(self):
-        return self.grad_fn(self.params, self.batch_stats, self.batch['inputs'], self.batch['labels'])
-
-    def loss_accuracy_batch_stats_grads_given_params(self, params):
-        return self.grad_fn(params, self.batch_stats, self.batch['inputs'], self.batch['labels'])
-
-    def train_metrics(self):
-        loss, accuracy = self.metrics(self.params, self.batch_stats, "train")
+    def train_metrics(self, dtype):
+        loss, accuracy = self.metrics(self.params, self.batch_stats, dtype, "train")
         return {'train_loss': loss, 'train_accuracy': accuracy}
 
-    def test_metrics(self):
-        loss, accuracy = self.metrics(self.params, self.batch_stats, "test")
+    def test_metrics(self, dtype):
+        loss, accuracy = self.metrics(self.params, self.batch_stats, dtype, "test")
         return {'test_loss': loss, 'test_accuracy': accuracy}
 
-    def get_train_test_metrics(self):
-        return {**self.train_metrics(), **self.test_metrics()}
+    def get_train_test_metrics(self, dtype):
+        return {**self.train_metrics(dtype), **self.test_metrics(dtype)}
 
-    @partial(jit, static_argnums=(0, 3))
-    def metrics(self, params, batch_stats, ds_str):
+    @partial(jit, static_argnums=(0, 3, 4))
+    def metrics(self, params, batch_stats, dtype, ds_str):
         losses = []
         accuracies = []
         if ds_str == "train":
@@ -138,36 +148,36 @@ class Problem:
                 .prefetch(tf.data.AUTOTUNE)
                 .as_numpy_iterator()
             ):
-                results = self.model.apply(
+                results = self.model[dtype].apply(
                     {'params': params, 'batch_stats': batch_stats}, x=batch['inputs'], train=False
                 )
-                losses.append(self.loss(results, batch['labels'], False))
-                accuracies.append(self.accuracy(results, batch['labels'], False))
+                losses.append(self.loss_from_model_results(results, batch['labels'], False))
+                accuracies.append(self.accuracy_from_model_results(results, batch['labels'], False))
         elif ds_str == "test":
             for batch in (
                 self.test_ds.padded_batch(self.batch_size, drop_remainder=False)
                 .prefetch(tf.data.AUTOTUNE)
                 .as_numpy_iterator()
             ):
-                results = self.model.apply(
+                results = self.model[dtype].apply(
                     {'params': params, 'batch_stats': batch_stats}, x=batch['inputs'], train=False
                 )
-                losses.append(self.loss(results, batch['labels'], False))
-                accuracies.append(self.accuracy(results, batch['labels'], False))
+                losses.append(self.loss_from_model_results(results, batch['labels'], False))
+                accuracies.append(self.accuracy_from_model_results(results, batch['labels'], False))
         loss = jnp.mean(jnp.hstack(losses))
         accuracy = jnp.mean(jnp.hstack(accuracies))
 
         return loss, accuracy
 
     @partial(jit, static_argnums=(0, 3))
-    def loss(self, results, labels, mean):
+    def loss_from_model_results(self, results, labels, mean):
         loss = self.loss_el_wise(results, labels)
         if mean:
             loss = jnp.mean(loss)
         return loss
 
     @partial(jit, static_argnums=(0, 3))
-    def accuracy(self, results, labels, mean):
+    def accuracy_from_model_results(self, results, labels, mean):
         accuracy = self.accuracy_el_wise(results, labels)
         if mean:
             accuracy = jnp.mean(accuracy)
@@ -175,15 +185,6 @@ class Problem:
 
     def get_metrics_keys(self):
         return ['batch_loss', 'batch_accuracy', 'train_loss', 'train_accuracy', 'test_loss', 'test_accuracy']
-
-    # def get_metrics(self, x):
-    #     results = self.model.apply(
-    #         {'params': self.params, 'batch_stats': self.batch_stats}, x=self.batch['inputs'], train=False
-    #     )
-    #     return {
-    #         'batch_loss': self.loss(results, self.batch['labels'], True),
-    #         'batch_accuracy': self.accuracy(results, self.batch['labels'], True),
-    #     }
 
     def plot_histories(self, histories, keys, axes):
         for key, ax in zip(keys, axes):

@@ -1,11 +1,12 @@
 import jax
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, lax
 import tree_math as tm
 import tree_math.numpy as tnp
 
 from functools import partial
 
+from utils.common import MP_dtype
 from solvers.opt.stabilized_utils.rho_estimator import rho_estimator
 from solvers.opt.stabilized_utils.es_methods import RKW1, RKC1, RKU1
 from utils.HelperClass import HelperClass
@@ -16,7 +17,7 @@ class tm_wrapped:
 
     def normal_like(key, x):
         xf, unflatten = jax.flatten_util.ravel_pytree(x.tree)
-        r = jax.random.normal(key, xf.shape)
+        r = jax.random.normal(key, xf.shape, dtype=xf.dtype)
         return tm.Vector(unflatten(r))
 
     def dot(x, y):
@@ -31,20 +32,12 @@ class SGF(HelperClass):
     Stabilized Gradient Flow (SGF) method. This method solves the gradient flow ODE using a stabilized method.
     """
 
+    default_high_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+    default_low_dtype = None
+
     def __init__(self, params):
 
-        default_params = {
-            "delta": 0.1,
-            "rho_freq": 5,
-            "method": "RKC1",
-            "damping": 0.05,
-            "safe_add": 1,
-            "fixed_s": 0,  # 0 ffor automatic selection of s, >0 for fixed s at that value
-            "log_history": False,
-            "record_stages": False,
-            "record_rejected": False,
-        }
-        super().__init__(default_params, params)
+        super().__init__(self.default_params, params)
 
         method_mapping = {
             "RKC1": RKC1,
@@ -54,7 +47,7 @@ class SGF(HelperClass):
 
         assert self.method in method_mapping, f"Stabilized method {self.method} not implemented."
 
-        self.es = method_mapping[self.method](self.damping, self.safe_add)
+        self.es = method_mapping[self.method](self.damping, self.safe_add, dtype=self.dtype.high)
 
         self.stats_keys = [
             "f_evals",
@@ -65,11 +58,25 @@ class SGF(HelperClass):
         ]
         self.history_keys = ["delta"]
 
+    @property
+    def default_params(self):
+        return {
+            "delta": 0.1,
+            "rho_freq": 5,
+            "method": "RKC1",
+            "damping": 0.05,
+            "safe_add": 1,
+            "fixed_s": 0,  # 0 for automatic selection of s, >0 for fixed s at that value
+            "log_history": False,
+            "record_stages": False,
+            "record_rejected": False,
+            "dtype": MP_dtype(self.default_high_dtype, self.default_low_dtype),
+        }
+
     def pre_loop(self, params, batch_stats):
         self.init_stats(self.stats_keys)
         self.init_history(self.history_keys)
 
-        self.fx = jnp.inf
         self.last_rho_eval_counter = 0
         if self.fixed_s == 0:
             self.rho_old = 0.0
@@ -126,7 +133,9 @@ class SGF(HelperClass):
 
         gjm1 = tm.Vector(problemML.params)
 
-        loss, accuracy, batch_stats, grads = problemML.loss_accuracy_batch_stats_grads()
+        assert gjm1.dtype is self.dtype.high.dtype, "params.dtype != self.dtype.high"
+
+        grads, (loss, accuracy, batch_stats) = problemML.grads_loss_accuracy_batch_stats(self.dtype.high.dtype)
         gj = self.small_body(self.es.mu[0], delta, gjm1, grads)
         problemML.params = gj.tree
         problemML.batch_stats = batch_stats
@@ -134,7 +143,7 @@ class SGF(HelperClass):
         for j in range(2, self.s + 1):
             gjm2 = gjm1
             gjm1 = gj
-            loss, accuracy, batch_stats, grads = problemML.loss_accuracy_batch_stats_grads()
+            grads, (loss, accuracy, batch_stats) = problemML.grads_loss_accuracy_batch_stats(self.dtype.high.dtype)
             gj = self.body(self.es.nu[j - 1], self.es.kappa[j - 1], self.es.mu[j - 1], delta, gjm1, gjm2, grads)
             problemML.params = gj.tree
             problemML.batch_stats = batch_stats
@@ -153,4 +162,52 @@ class SGF(HelperClass):
     @partial(jit, static_argnums=(0,))
     def small_body(self, mu, delta, gjm1, grads):
         gj = gjm1 - mu * delta * tm.Vector(grads)
+        return gj
+
+
+class MPSGF(SGF):
+
+    default_high_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
+    default_low_dtype = jnp.float16
+
+    def stabilized_iteration(self, problemML, delta):
+
+        def tree_to_low(tr):
+            return jax.tree.map(lambda x: lax.convert_element_type(x, self.dtype.low), tr)
+
+        # try to remove the copy
+        params0_vector = tm.Vector(problemML.params.copy())
+        params0_vector_low = tm.Vector(tree_to_low(problemML.params))
+
+        djm1 = tnp.zeros_like(tm.Vector(problemML.params))
+
+        assert djm1.dtype is self.dtype.high.dtype, "params.dtype != self.dtype.high"
+        assert params0_vector_low.dtype is self.dtype.low.dtype, "params_low.dtype != self.dtype.low"
+
+        grads0, (loss, accuracy, batch_stats) = problemML.grads_loss_accuracy_batch_stats(self.dtype.high.dtype)
+        grads0 = tm.Vector(grads0)
+        dj = -self.es.mu[0] * delta * grads0
+
+        for j in range(2, self.s + 1):
+            djm2 = djm1
+            djm1 = dj
+            problemML.params = (params0_vector_low + tm.Vector(tree_to_low(dj.tree))).tree
+            problemML.batch_stats = batch_stats  # tree_to_low(batch_stats)
+            hvp, (grads, loss, accuracy, batch_stats) = problemML.hvp_grads_loss_accuracy_batch_stats(
+                tree_to_low(djm1.tree), self.dtype.low.dtype
+            )
+            dj = self.body(self.es.nu[j - 1], self.es.kappa[j - 1], self.es.mu[j - 1], delta, djm1, djm2, grads0, hvp)
+
+        problemML.params = (params0_vector + dj).tree
+        problemML.batch_stats = batch_stats
+
+        metrics = {'batch_loss': loss, 'batch_accuracy': accuracy}
+        self.stats["f_evals"] += self.s
+        self.stats["df_evals"] += self.s
+
+        return metrics
+
+    @partial(jit, static_argnums=(0,))
+    def body(self, nu, kappa, mu, delta, gjm1, gjm2, grads, hvp):
+        gj = nu * gjm1 + kappa * gjm2 - mu * delta * (grads + tm.Vector(hvp))
         return gj
