@@ -149,8 +149,9 @@ class TR(HelperClass):
             B = self.problem.ddf(x)
             self.stats["ddf_evals"] += 1
 
-            B_fac = jax.scipy.linalg.cho_factor(B)
-            pB = jax.scipy.linalg.cho_solve(B_fac, -g)
+            # B_fac = jax.scipy.linalg.cho_factor(B)
+            # pB = jax.scipy.linalg.cho_solve(B_fac, -g)
+            pB = jax.scipy.linalg.solve(B, -g, lower=True, assume_a='sym')
             self.stats["ddf_solves"] += 1
 
             def Bv(v):

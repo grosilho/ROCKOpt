@@ -76,8 +76,9 @@ class SF(HelperClass):
             B = self.problem.ddf(x)
             self.stats["ddf_evals"] += 1
 
-            B_fac = jax.scipy.linalg.cho_factor(B)
-            p = jax.scipy.linalg.cho_solve(B_fac, -g)
+            # B_fac = jax.scipy.linalg.cho_factor(B)
+            # p = jax.scipy.linalg.cho_solve(B_fac, -g)
+            p = jax.scipy.linalg.solve(B, -g, lower=True, assume_a='sym')
             self.stats["ddf_solves"] += 1
 
         elif self.linear_solver == "iterative":

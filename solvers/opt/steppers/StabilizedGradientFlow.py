@@ -51,6 +51,7 @@ class SGF(HelperClass):
             "method": "RKC1",
             "damping": 0.05,
             "safe_add": 1,
+            "fixed_s": 0,
             "log_history": False,
             "record_stages": False,
             "record_rejected": False,
@@ -61,9 +62,15 @@ class SGF(HelperClass):
         self.init_stats(self.stats_keys)
         self.init_history(self.history_keys)
         self.last_rho_eval_counter = 0
-        self.rho_old = 0.0
-        self.s_old = 0
-        self.rho_estimator = rho_estimator(x)
+
+        if self.fixed_s == 0:
+            self.rho_old = 0.0
+            self.s_old = 0
+            self.rho_estimator = rho_estimator(x)
+        else:
+            self.s = self.fixed_s
+            self.rho = 0.0  # dummy value
+            self.es.update_coefficients(self.s)
 
         if self.log_history:
             self.append_to_history(delta=self.delta)
@@ -113,7 +120,7 @@ class SGF(HelperClass):
 
     def update_rho_and_stages(self, x, delta):
         # re-estimate rho every rho_freq iterations
-        if self.last_rho_eval_counter % self.rho_freq == 0:
+        if self.fixed_s == 0 and self.last_rho_eval_counter % self.rho_freq == 0:
             # rho, n_f_eval = self.rho_estimator.rho(f, x, fx)
             self.rho, n_f_eval = self.rho_estimator.rho_linear_power_method(lambda v: self.problem.ddfv(x, v))
 
@@ -159,7 +166,7 @@ class MPSGF(SGF):
         for j in range(2, self.s + 1):
             djm2, djm1, dj = djm1, dj, djm2
             dfxd = df(x_low, lax.convert_element_type(djm1, self.dtype.low))
-            # dfxd = f(x + djm1) - fx # jus for debugging
+            # dfxd = f(x + djm1) - fx # just for debugging
             dj = self.body(
                 self.es.nu[j - 1],
                 self.es.kappa[j - 1],
