@@ -31,6 +31,7 @@ class MinimizationAlgorithm(HelperClass):
             "ddf_solves",
             "ddf_mults",
             "f(x)",
+            "conv reason",
         ]
         self.history_keys = ["fx", "accepted"]
 
@@ -68,11 +69,14 @@ class MinimizationAlgorithm(HelperClass):
             if self.log_history and (accepted or self.record_rejected):
                 self.append_to_history(fx=fx, accepted=accepted, **self.problem.get_metrics(x))
 
-            if self.converged(**convergence_info):
+            conv = self.converged(**convergence_info)
+            if conv:
                 break
 
         et = time.time() - et
         self.stats["cpu_time"] = et
+
+        self.stats["conv reason"] = conv
 
         self.stepper.post_loop(x, fx)
         history, stats = self.post_loop(x, fx)
@@ -107,15 +111,18 @@ class MinimizationAlgorithm(HelperClass):
             return False
         if self.stats["iter"] >= self.max_iter:
             self.logger.warning("Maximum number of iterations reached")
-            return True
+            return "max iter"
 
         abs_f_diff = jnp.abs(f_diff)
         fx_conv = abs_f_diff < self.rtol * fx_norm or abs_f_diff < self.atol
         x_conv = dx_norm < self.rtol * x_norm or dx_norm < self.atol
 
         if fx_conv or x_conv:
-            self.logger.debug("Convergence reached")
-            return True
+            conv = "small df" if fx_conv else "small dx"
+            self.logger.debug("Convergence reached, reason: " + conv)
+            return conv
+        else:
+            return False
 
     def log(self, fx, stepper_log_str):
         self.logger.info(f"Iteration {self.stats['iter']}, f(x) = {fx:.3e}, " + stepper_log_str)

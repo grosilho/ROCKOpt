@@ -34,5 +34,7 @@ def key_to_tex(key):
         return r"Batch Loss"
     elif key == "batch_accuracy":
         return r"Batch Accuracy"
+    elif key == "l2_error":
+        return r"$\ell_2$ Error"
     else:
         return key

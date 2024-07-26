@@ -3,7 +3,7 @@ import logging
 
 from solvers.opt import MinimizationAlgorithm
 from solvers.opt.steppers import SGF, MPSGF, TR, STR, SF
-from problems.opt import Rosenbrock
+from problems.opt import Tomography
 from utils.print_stuff import print_table
 from utils.common import set_jax_options, initialize_solvers, run_solvers, MP_dtype
 
@@ -12,7 +12,7 @@ jit = True
 float64 = False
 profile = False
 log_history = True
-highest_dtype = jnp.float64
+highest_dtype = jnp.float32
 # highest_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
 
 set_jax_options(gpu, float64)
@@ -20,14 +20,22 @@ set_jax_options(gpu, float64)
 logging.basicConfig(level=logging.INFO)
 
 # Define the function to minimize
-problem = Rosenbrock(dim=3)
+problem = Tomography(
+    n_theta=25,
+    n_v_lines=20,
+    n_int_points=20,
+    interp_mesh_dx=0.025,
+    basis_mesh_dx=0.1,
+    free_eps=True,
+    free_centers=True,
+)
 
 # The solvers to use
 solvers_list = [
-    # "SGF",
+    "SGF",
     # "MPSGF",
     # "TR",
-    "STR",
+    # "STR",
     # "NF",
 ]
 
@@ -35,9 +43,9 @@ solvers_list = [
 # The method used in the outer loop. It will call the steppers
 min_algo = MinimizationAlgorithm
 min_algo_params = {
-    "max_iter": 200,
+    "max_iter": 10000,
     "min_iter": 1,
-    "rtol": 1e-4,
+    "rtol": 1e-8,
     "atol": 0.0,
     "log_history": log_history,
     "record_rejected": False,
@@ -46,7 +54,7 @@ min_algo_params = {
 # Define all solvers parameters. Not all those solvers will be used, but only the ones in solvers_list.
 solvers_info = []
 
-# The SGF method, which is a stabilized method to solve the gradient flow ODE
+# The SGF method, which is a stabilized method to solve the gradient flow ODE (aka RKCD)
 solvers_info.append(
     {
         "name": "SGF",
@@ -54,11 +62,11 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": SGF,
         "stepper_params": {
-            "delta": 0.1,
-            "rho_freq": 1,
+            "delta": 1e-2,
+            "rho_freq": 10,
             "method": "RKC1",
-            "damping": 10.0,
-            "safe_add": 1,
+            "damping": 2.0,
+            "safe_add": 2,
             "log_history": log_history,
             "record_stages": False,
             "dtype": MP_dtype(highest_dtype, None),
@@ -73,10 +81,10 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": MPSGF,
         "stepper_params": {
-            "delta": 0.1,
+            "delta": 100,
             "rho_freq": 1,
             "method": "RKC1",
-            "damping": 10.0,
+            "damping": 1.0,
             "safe_add": 1,
             "log_history": log_history,
             "record_stages": False,
@@ -92,11 +100,11 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": TR,
         "stepper_params": {
-            "delta_max": 1.0,
+            "delta_max": 10.0,
             "delta_init": 1.0,
             "eta": 1e-4,
             "local_problem_solver": "dog_leg",
-            "method": "direct",
+            "method": "iterative",
             "iter_solver_tol": 1e-5,
             "iter_solver_maxiter": 100,
             "log_history": log_history,
@@ -113,18 +121,18 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": STR,
         "stepper_params": {
-            "delta_max": 1.0,
+            "delta_max": 10.0,
             "delta_init": 1.0,
             "eta": 1e-4,
             "log_history": log_history,
             "record_rejected": False,
             "dtype": MP_dtype(highest_dtype, None),
             "method": "RKC1",
-            "dt": 1.0,
-            "damping": 1.0,
-            "safe_add": 1,
+            "dt": 1e-2,
+            "damping": 2.0,
+            "safe_add": 2,
             "rho_freq": 1,
-            "max_steps": 100,
+            "max_steps": 10,
             "rel_res_tol": 1e-3,
             "abs_tol": 1e-9,
             "rel_tol": 1e-3,
