@@ -84,8 +84,8 @@ class Tomography(RadialBasis):
         key = jax.random.key(seed)
         keys = jax.random.split(key, num=self.n_v_lines)
         # use the Poisson sampling to introduce some noise or the rounded mean to have a more deterministic problem
-        sampled_photons = [jnp.round(photons_average[i]) for i in range(self.n_v_lines)]
-        # sampled_photons = [jax.random.poisson(keys[i], photons_average[i]) for i in range(self.n_v_lines)]
+        # sampled_photons = [jnp.round(photons_average[i]) for i in range(self.n_v_lines)]
+        sampled_photons = [jax.random.poisson(keys[i], photons_average[i]) for i in range(self.n_v_lines)]
 
         return sampled_photons
 
