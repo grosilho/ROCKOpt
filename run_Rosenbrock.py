@@ -12,7 +12,7 @@ jit = True
 float64 = False
 profile = False
 log_history = True
-highest_dtype = jnp.float64
+highest_dtype = jnp.float32
 # highest_dtype = jnp.float64 if jax.config.jax_enable_x64 else jnp.float32
 
 set_jax_options(gpu, float64)
@@ -24,9 +24,9 @@ problem = Rosenbrock(dim=3)
 
 # The solvers to use
 solvers_list = [
-    # "SGF",
-    # "MPSGF",
-    # "TR",
+    "SGF",
+    "MPSGF",
+    "TR",
     "STR",
     # "NF",
 ]

@@ -32,8 +32,8 @@ problem = Tomography(
 
 # The solvers to use
 solvers_list = [
-    "SGF",
-    # "MPSGF",
+    # "SGF",
+    "MPSGF",
     # "TR",
     # "STR",
     # "NF",
@@ -43,7 +43,7 @@ solvers_list = [
 # The method used in the outer loop. It will call the steppers
 min_algo = MinimizationAlgorithm
 min_algo_params = {
-    "max_iter": 10000,
+    "max_iter": 10,
     "min_iter": 1,
     "rtol": 1e-8,
     "atol": 0.0,
@@ -81,11 +81,11 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": MPSGF,
         "stepper_params": {
-            "delta": 100,
+            "delta": 1e-6,
             "rho_freq": 1,
             "method": "RKC1",
-            "damping": 1.0,
-            "safe_add": 1,
+            "damping": 0.1,
+            "safe_add": 2,
             "log_history": log_history,
             "record_stages": False,
             "dtype": MP_dtype(highest_dtype, jnp.float16),

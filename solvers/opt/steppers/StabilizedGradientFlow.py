@@ -166,7 +166,8 @@ class MPSGF(SGF):
         for j in range(2, self.s + 1):
             djm2, djm1, dj = djm1, dj, djm2
             dfxd = df(x_low, lax.convert_element_type(djm1, self.dtype.low))
-            # dfxd = f(x + djm1) - fx # just for debugging
+            # dfxd = f(x + djm1) - fx  # just for debugging
+            # dfxd = f(x_low + lax.convert_element_type(djm1, self.dtype.low)) - fx  # just for debugging
             dj = self.body(
                 self.es.nu[j - 1],
                 self.es.kappa[j - 1],

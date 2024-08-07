@@ -22,15 +22,15 @@ logging.basicConfig(level=logging.INFO)
 # Define the function to minimize
 problem = RadialBasis(
     interp_mesh_dx=0.025,
-    basis_mesh_dx=0.1,
+    basis_mesh_dx=0.25,
     free_eps=True,
     free_centers=True,
 )
 
 # The solvers to use
 solvers_list = [
-    "SGF",
-    # "MPSGF",
+    # "SGF",
+    "MPSGF",
     # "TR",
     # "STR",
     # "NF",
@@ -78,10 +78,10 @@ solvers_info.append(
         "min_algo_params": min_algo_params,
         "stepper_class": MPSGF,
         "stepper_params": {
-            "delta": 100,
-            "rho_freq": 1,
+            "delta": 5.0,
+            "rho_freq": 10,
             "method": "RKC1",
-            "damping": 1.0,
+            "damping": 0.1,
             "safe_add": 1,
             "log_history": log_history,
             "record_stages": False,

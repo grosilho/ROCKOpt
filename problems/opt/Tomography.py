@@ -2,7 +2,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from jax import jit, vmap
+from jax import jit, vmap, lax
 
 from .RadialBasis import RadialBasis
 
@@ -21,18 +21,17 @@ class Tomography(RadialBasis):
         self.n_theta = n_theta
         self.n_v_lines = n_v_lines
         self.n_int_points = n_int_points
-        self.N_photons = 1e6
 
         super().__init__(interp_mesh_dx, basis_mesh_dx, free_eps, free_centers)
         self.name = 'Tomography'  # overwrite the name defined in super().__init__() as "RadialBasis"
 
-    def define_lines(self, dtype_high):
-        thetas = jnp.linspace(0.0, jnp.pi, self.n_theta + 1, dtype=dtype_high)[:-1]
+    def define_lines(self, dtype):
+        thetas = jnp.linspace(0.0, jnp.pi, self.n_theta + 1, dtype=dtype.high)[:-1]
         self.ab = []
         self.ab.append(
             jnp.stack([jnp.cos(thetas), jnp.sin(thetas), jnp.cos(thetas + jnp.pi), jnp.sin(thetas + jnp.pi)], axis=1)
         )
-        thetas = jnp.linspace(0.0, 2.0 * jnp.pi, self.n_theta + 1, dtype=dtype_high)[:-1]
+        thetas = jnp.linspace(0.0, 2.0 * jnp.pi, self.n_theta + 1, dtype=dtype.high)[:-1]
         for i in range(1, self.n_v_lines):
             x = i / self.n_v_lines
             alpha = jnp.arccos(x)
@@ -48,35 +47,54 @@ class Tomography(RadialBasis):
                 )
             )
 
-    def define_integrals(self):
-        ab = self.ab[0][0]
+        self.ab = {dtype.high.dtype: self.ab}
+        if dtype.low is not None:
+            self.ab[dtype.low.dtype] = jax.tree.map(
+                lambda x: lax.convert_element_type(x, dtype.low), self.ab[dtype.high.dtype]
+            )
+
+    def define_integrals(self, dtype):
+        ab = self.ab[dtype.high.dtype][0][0]
         norm_ab_max = jnp.linalg.norm(ab[2:] - ab[:2])
         t = jnp.linspace(0.0, 1.0, 2 * self.n_int_points + 1)
         t = t[1::2]
         self.integral_points = []
         self.integral_points.append(
-            self.ab[0][:, :2, None] + (self.ab[0][:, 2:, None] - self.ab[0][:, :2, None]) * t[None, None, :]
+            self.ab[dtype.high.dtype][0][:, :2, None]
+            + (self.ab[dtype.high.dtype][0][:, 2:, None] - self.ab[dtype.high.dtype][0][:, :2, None]) * t[None, None, :]
         )
         for i in range(1, self.n_v_lines):
-            ab = self.ab[i][0]
+            ab = self.ab[dtype.high.dtype][i][0]
             norm_ab = jnp.linalg.norm(ab[2:] - ab[:2])
             n_int_points = max(int(self.n_int_points * norm_ab / norm_ab_max), 1)
             t = jnp.linspace(0.0, 1.0, 2 * n_int_points + 1)
             t = t[1::2]
             self.integral_points.append(
-                self.ab[i][:, :2, None] + (self.ab[i][:, 2:, None] - self.ab[i][:, :2, None]) * t[None, None, :]
+                self.ab[dtype.high.dtype][i][:, :2, None]
+                + (self.ab[dtype.high.dtype][i][:, 2:, None] - self.ab[dtype.high.dtype][i][:, :2, None])
+                * t[None, None, :]
             )
         self.dl = [jnp.linalg.norm(int_pts[0, :, 1] - int_pts[0, :, 0]) for int_pts in self.integral_points]
+
+        self.integral_points = {dtype.high.dtype: self.integral_points}
+        self.dl = {dtype.high.dtype: self.dl}
+        if dtype.low is not None:
+            self.integral_points[dtype.low.dtype] = jax.tree.map(
+                lambda x: lax.convert_element_type(x, dtype.low), self.integral_points[dtype.high.dtype]
+            )
+            self.dl[dtype.low.dtype] = jax.tree.map(
+                lambda x: lax.convert_element_type(x, dtype.low), self.dl[dtype.high.dtype]
+            )
 
     def integrate_over_lines(self, c, eps, w):
         lines_integrals = [
             jnp.sum(vmap(self.u, in_axes=(0, None, None, None))(points, c, eps, w), axis=1) * dl
-            for points, dl in zip(self.integral_points, self.dl)
+            for points, dl in zip(self.integral_points[c.dtype], self.dl[c.dtype])
         ]
         return lines_integrals
 
     def compute_photons_average(self, lines_integrals):
-        photons_average = [self.N_photons * jnp.exp(-li) for li in lines_integrals]
+        photons_average = [self.N_photons[li.dtype] * jnp.exp(-li) for li in lines_integrals]
         return photons_average
 
     def sample_photons(self, photons_average):
@@ -90,23 +108,37 @@ class Tomography(RadialBasis):
         return sampled_photons
 
     def initial_guess(self, dtype):
-        self.interpolation_points = self.circle_mesh(self.interp_mesh_dx)
-        self.define_lines(dtype.high)
-        self.define_integrals()
+        self.dtype = dtype
+        self.interpolation_points = self.circle_mesh(self.interp_mesh_dx, dtype)
+        self.define_lines(dtype)
+        self.define_integrals(dtype)
         self.define_exact_u(dtype)
-        self.exact_u_integrals = self.integrate_over_lines(self.u_c, self.u_eps, self.u_w)
-        self.exact_photons_average = self.compute_photons_average(self.exact_u_integrals)
-        self.sampled_photons = self.sample_photons(self.exact_photons_average)
+        self.exact_u_integrals = self.integrate_over_lines(
+            self.u_c[dtype.high.dtype], self.u_eps[dtype.high.dtype], self.u_w[dtype.high.dtype]
+        )
+        self.N_photons = {dtype.high.dtype: 1e6}
+        if dtype.low is not None:
+            self.N_photons[dtype.low.dtype] = lax.convert_element_type(self.N_photons[dtype.high.dtype], dtype.low)
+        exact_photons_average = self.compute_photons_average(self.exact_u_integrals)
+        self.sampled_photons = self.sample_photons(exact_photons_average)
+        self.sampled_photons = {dtype.high.dtype: self.sampled_photons}
+        if dtype.low is not None:
+            self.sampled_photons[dtype.low.dtype] = jax.tree_map(
+                lambda x: lax.convert_element_type(x, dtype.low), self.sampled_photons[dtype.high.dtype]
+            )
 
-        self.basis_centers = self.circle_mesh(self.basis_mesh_dx)
-        self.n_basis = self.basis_centers.shape[1]
+        self.default_basis_centers = self.circle_mesh(self.basis_mesh_dx, dtype)
+        self.n_basis = self.default_basis_centers[dtype.high.dtype].shape[1]
         self.default_eps = 2.0 * jnp.ones(self.n_basis, dtype=dtype.high)
         weights = jnp.ones(self.n_basis, dtype=dtype.high) / self.n_basis
         x0 = weights
         if self.free_eps:
             x0 = jnp.concatenate([x0, self.default_eps])
         if self.free_centers:
-            x0 = jnp.concatenate([x0, self.basis_centers.flatten()])
+            x0 = jnp.concatenate([x0, self.default_basis_centers[dtype.high.dtype].flatten()])
+        self.default_eps = {dtype.high.dtype: self.default_eps}
+        if dtype.low is not None:
+            self.default_eps[dtype.low.dtype] = lax.convert_element_type(self.default_eps[dtype.high.dtype], dtype.low)
 
         return x0
 
@@ -117,8 +149,8 @@ class Tomography(RadialBasis):
         return jnp.mean(
             jnp.array(
                 [
-                    jnp.mean(self.N_photons * jnp.exp(-li) + samp_pho * li)
-                    for li, samp_pho in zip(lines_integrals, self.sampled_photons)
+                    jnp.mean(self.N_photons[x.dtype] * jnp.exp(-li) + samp_pho * li)
+                    for li, samp_pho in zip(lines_integrals, self.sampled_photons[x.dtype])
                 ]
             )
         )
@@ -127,8 +159,10 @@ class Tomography(RadialBasis):
         l2_error = jnp.sqrt(
             jnp.mean(
                 (
-                    self.u(self.interpolation_points, self.u_c, self.u_eps, self.u_w)
-                    - self.u(self.interpolation_points, *self.get_c_eps_w(x))
+                    self.u(
+                        self.interpolation_points[x.dtype], self.u_c[x.dtype], self.u_eps[x.dtype], self.u_w[x.dtype]
+                    )
+                    - self.u(self.interpolation_points[x.dtype], *self.get_c_eps_w(x))
                 )
                 ** 2
             )
@@ -155,9 +189,14 @@ class Tomography(RadialBasis):
 
         ax1 = fig.add_subplot(2, n_methods + 1, 1, projection='3d')
         ax1.plot_trisurf(
-            self.interpolation_points[0, :],
-            self.interpolation_points[1, :],
-            self.u(self.interpolation_points, self.u_c, self.u_eps, self.u_w),
+            self.interpolation_points[self.dtype.high.dtype][0, :],
+            self.interpolation_points[self.dtype.high.dtype][1, :],
+            self.u(
+                self.interpolation_points[self.dtype.high.dtype],
+                self.u_c[self.dtype.high.dtype],
+                self.u_eps[self.dtype.high.dtype],
+                self.u_w[self.dtype.high.dtype],
+            ),
             cmap=cmap,
             antialiased=False,
             label="Exact",
@@ -167,9 +206,9 @@ class Tomography(RadialBasis):
             method = methods[i]
             centers, eps, weights = self.get_c_eps_w(histories[method]['x'][-1])
             ax.plot_trisurf(
-                self.interpolation_points[0, :],
-                self.interpolation_points[1, :],
-                self.u(self.interpolation_points, centers, eps, weights),
+                self.interpolation_points[self.dtype.high.dtype][0, :],
+                self.interpolation_points[self.dtype.high.dtype][1, :],
+                self.u(self.interpolation_points[self.dtype.high.dtype], centers, eps, weights),
                 cmap=cmap,
                 antialiased=False,
                 label=method,

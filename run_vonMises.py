@@ -24,9 +24,9 @@ problem = vonMises(kappa=10.0, dim=10, n_samples=10000)
 
 # The solvers to use
 solvers_list = [
-    "SGF",
+    # "SGF",
     "MPSGF",
-    "TR",
+    # "TR",
     # "STR",
     # "NF",
     # "GF",
