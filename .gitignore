@@ -168,3 +168,6 @@ tensorboard_logs
 
 # pdf
 *.pdf
+
+#others
+eiger_transfer_scripts

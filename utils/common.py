@@ -20,6 +20,13 @@ def set_jax_options(gpu, float64):
     print(f"Jax Default Device: {jnp.ones(3).devices()}")
 
 
+def get_end_of_histories(histories, keys):
+    last_histories_item = dict()
+    for method, history in histories.items():
+        last_histories_item[method] = {key: history[key][-1] for key in keys}
+    return last_histories_item
+
+
 def initialize_solvers(problem, solvers_info, solvers_list, jit):
     """
     Initialize the solvers and perform one iteration.

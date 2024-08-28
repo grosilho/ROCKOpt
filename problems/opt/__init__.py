@@ -6,3 +6,4 @@ from .Denoising import Denoising
 from .vonMises import vonMises
 from .Tomography import Tomography
 from .RadialBasis import RadialBasis
+from .UCI_Classification import UCI_Classification
